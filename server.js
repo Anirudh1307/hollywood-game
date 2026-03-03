@@ -305,8 +305,8 @@ io.on('connection', (socket) => {
         
         const finalWord = room.word;
         console.log('Emitting roundResult with word:', finalWord);
-        broadcastRoomState(roomId);
         io.to(roomId).emit('roundResult', { word: finalWord, winner: true });
+        broadcastRoomState(roomId);
         
         setTimeout(() => {
           if (rooms[roomId]) {
@@ -350,8 +350,8 @@ io.on('connection', (socket) => {
         
         const finalWord = room.word;
         console.log('Emitting roundResult with word:', finalWord);
-        broadcastRoomState(roomId);
         io.to(roomId).emit('roundResult', { word: finalWord, winner: false });
+        broadcastRoomState(roomId);
         
         setTimeout(() => {
           if (rooms[roomId]) {
@@ -440,8 +440,8 @@ io.on('connection', (socket) => {
       
       const finalWord = room.word;
       console.log('Emitting roundResult with word:', finalWord);
-      broadcastRoomState(roomId);
       io.to(roomId).emit('roundResult', { word: finalWord, winner: true });
+      broadcastRoomState(roomId);
       
       setTimeout(() => {
         if (rooms[roomId]) {
@@ -484,8 +484,8 @@ io.on('connection', (socket) => {
         
         const finalWord = room.word;
         console.log('Emitting roundResult with word:', finalWord);
-        broadcastRoomState(roomId);
         io.to(roomId).emit('roundResult', { word: finalWord, winner: false });
+        broadcastRoomState(roomId);
         
         setTimeout(() => {
           if (rooms[roomId]) {
