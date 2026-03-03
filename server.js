@@ -303,8 +303,10 @@ io.on('connection', (socket) => {
         room.roomState = 'round_ended';
         room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
         
+        const finalWord = room.word;
+        console.log('Emitting roundResult with word:', finalWord);
         broadcastRoomState(roomId);
-        io.to(roomId).emit('roundResult', { word: room.word, winner: true });
+        io.to(roomId).emit('roundResult', { word: finalWord, winner: true });
         
         setTimeout(() => {
           if (rooms[roomId]) {
@@ -346,8 +348,10 @@ io.on('connection', (socket) => {
         room.roomState = 'round_ended';
         room.scores[room.players[room.hostIndex].socketId] = (room.scores[room.players[room.hostIndex].socketId] || 0) + 10;
         
+        const finalWord = room.word;
+        console.log('Emitting roundResult with word:', finalWord);
         broadcastRoomState(roomId);
-        io.to(roomId).emit('roundResult', { word: room.word, winner: false });
+        io.to(roomId).emit('roundResult', { word: finalWord, winner: false });
         
         setTimeout(() => {
           if (rooms[roomId]) {
@@ -434,8 +438,10 @@ io.on('connection', (socket) => {
       room.roomState = 'round_ended';
       room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
       
+      const finalWord = room.word;
+      console.log('Emitting roundResult with word:', finalWord);
       broadcastRoomState(roomId);
-      io.to(roomId).emit('roundResult', { word: room.word, winner: true });
+      io.to(roomId).emit('roundResult', { word: finalWord, winner: true });
       
       setTimeout(() => {
         if (rooms[roomId]) {
@@ -476,8 +482,10 @@ io.on('connection', (socket) => {
         room.roomState = 'round_ended';
         room.scores[room.players[room.hostIndex].socketId] = (room.scores[room.players[room.hostIndex].socketId] || 0) + 10;
         
+        const finalWord = room.word;
+        console.log('Emitting roundResult with word:', finalWord);
         broadcastRoomState(roomId);
-        io.to(roomId).emit('roundResult', { word: room.word, winner: false });
+        io.to(roomId).emit('roundResult', { word: finalWord, winner: false });
         
         setTimeout(() => {
           if (rooms[roomId]) {

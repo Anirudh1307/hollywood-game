@@ -58,6 +58,13 @@ socket.on('hostRoundUpdate', (data) => {
   }
 });
 
+socket.on('roundResult', (data) => {
+  if (data && data.word) {
+    gameState.resultWord = data.word;
+    console.log('Received roundResult:', data);
+  }
+});
+
 socket.on('kicked', () => {
   alert('You have been kicked from the room');
   window.location.href = '/';
