@@ -371,3 +371,36 @@ h1 {
   outline: none;
   border-color: #667eea;
 }
+
+.turn-indicator {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.turn-msg {
+  padding: 15px;
+  border-radius: 10px;
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.my-turn {
+  background: #2ecc71;
+  color: white;
+  animation: pulse 1.5s infinite;
+}
+
+.waiting-turn {
+  background: #f39c12;
+  color: white;
+}
+
+.host-msg {
+  background: #667eea;
+  color: white;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}

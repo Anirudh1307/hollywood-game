@@ -53,7 +53,25 @@ function renderGame() {
   renderHistory();
   renderGameOver();
   renderScoreboard();
+  renderTurnIndicator();
   renderChat();
+}
+
+function renderTurnIndicator() {
+  const indicator = document.getElementById('turnIndicator');
+  if (!indicator) return;
+  
+  const isHost = gameState.hostSocketId === mySocketId;
+  const isMyTurn = gameState.turnSocketId === mySocketId;
+  
+  if (isHost) {
+    indicator.innerHTML = '<div class="turn-msg host-msg">You are the host - Players are guessing</div>';
+  } else if (isMyTurn) {
+    indicator.innerHTML = '<div class="turn-msg my-turn">🎯 YOUR TURN TO GUESS!</div>';
+  } else {
+    const turnPlayer = gameState.players[gameState.turnIndex];
+    indicator.innerHTML = `<div class="turn-msg waiting-turn">Waiting for ${turnPlayer.username}'s turn...</div>`;
+  }
 }
 
 function renderHollywood() {
@@ -96,7 +114,7 @@ function renderKeypad() {
   
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const isHost = gameState.hostSocketId === mySocketId;
-  const hasGuessed = gameState.guessedPlayers.includes(mySocketId);
+  const isMyTurn = gameState.turnSocketId === mySocketId;
   
   for (const letter of alphabet) {
     const button = document.createElement('button');
@@ -106,7 +124,7 @@ function renderKeypad() {
     const used = gameState.correctLetters.includes(letter) || 
                   gameState.wrongLetters.includes(letter);
     
-    if (used || gameState.gameOver || isHost || hasGuessed || gameState.roomState !== 'round_active') {
+    if (used || gameState.gameOver || isHost || !isMyTurn || gameState.roomState !== 'round_active') {
       button.disabled = true;
       if (used) button.classList.add('used');
     }
@@ -133,9 +151,9 @@ function renderGameOver() {
   const button = document.getElementById('guessWordBtn');
   
   const isHost = gameState.hostSocketId === mySocketId;
-  const hasGuessed = gameState.guessedPlayers.includes(mySocketId);
+  const isMyTurn = gameState.turnSocketId === mySocketId;
   
-  if (isHost || hasGuessed || gameState.roomState !== 'round_active') {
+  if (isHost || !isMyTurn || gameState.roomState !== 'round_active') {
     input.disabled = true;
     button.disabled = true;
   } else {
