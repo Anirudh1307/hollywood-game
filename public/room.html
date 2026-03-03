@@ -39,7 +39,11 @@
     </div>
 
     <div id="waitingArea" style="display: none;">
-      <h3>Waiting for <span id="currentHostName"></span> to set the word...</h3>
+      <div id="waitingMessage" style="display: none;" class="waiting-message">
+        <h3>⏳ Waiting for more players to join...</h3>
+        <p>At least 2 players are required to start the game.</p>
+      </div>
+      <h3 id="hostWaitingText" style="display: none;">Waiting for <span id="currentHostName"></span> to set the word...</h3>
       
       <div class="chat-container">
         <h4>Chat</h4>

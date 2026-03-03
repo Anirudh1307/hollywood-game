@@ -11,6 +11,16 @@ app.use(express.static('public'));
 
 const rooms = {};
 
+// Helper: Check if character is alphanumeric
+function isAlphanumeric(char) {
+  return /[A-Z0-9]/.test(char);
+}
+
+// Helper: Normalize word by removing non-alphanumeric for comparison
+function normalizeForComparison(word) {
+  return word.toUpperCase().split('').filter(isAlphanumeric).join('');
+}
+
 function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
@@ -29,6 +39,14 @@ app.post('/create-room', (req, res) => {
 });
 
 function getNextTurnIndex(room) {
+  if (room.players.length < 2) return null;
+  
+  // With 2 players, toggle between them (one is host, one guesses)
+  if (room.players.length === 2) {
+    return room.hostIndex === 0 ? 1 : 0;
+  }
+  
+  // With 3+ players, cycle to next non-host player
   let next = (room.turnIndex + 1) % room.players.length;
   while (next === room.hostIndex) {
     next = (next + 1) % room.players.length;
@@ -110,6 +128,13 @@ io.on('connection', (socket) => {
       room.scores[socket.id] = 0;
     }
     
+    // Update room state based on player count
+    if (room.players.length < 2) {
+      room.roomState = 'waiting_for_players';
+    } else if (room.roomState === 'waiting_for_players') {
+      room.roomState = 'waiting_for_host_input';
+    }
+    
     broadcastRoomState(roomId);
   });
 
@@ -117,13 +142,26 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room) return;
     
+    // Require at least 2 players
+    if (room.players.length < 2) {
+      socket.emit('error', 'At least 2 players required to start.');
+      return;
+    }
+    
     const currentHost = room.players[room.hostIndex];
     if (!currentHost || currentHost.socketId !== socket.id) return;
     if (room.roomState !== 'waiting_for_host_input') return;
 
     room.word = word.toUpperCase();
     room.clues = clues.filter(c => c.trim());
-    room.revealed = Array(word.length).fill('_');
+    
+    // Initialize revealed: non-alphanumeric chars visible, alphanumeric hidden
+    room.revealed = [];
+    for (let i = 0; i < room.word.length; i++) {
+      const char = room.word[i];
+      room.revealed.push(isAlphanumeric(char) ? '_' : char);
+    }
+    
     room.roomState = 'round_active';
     room.gameOver = false;
     room.winner = false;
@@ -163,6 +201,7 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room) return;
     if (room.roomState !== 'round_active') return;
+    if (room.players.length < 2) return;
     
     const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
     if (playerIndex === -1) return;
@@ -170,6 +209,9 @@ io.on('connection', (socket) => {
     if (playerIndex === room.hostIndex) return;
 
     const upperLetter = letter.toUpperCase();
+    
+    // Reject non-alphanumeric guesses
+    if (!/^[A-Z0-9]$/.test(upperLetter)) return;
     
     if (room.correctLetters.includes(upperLetter) || room.wrongLetters.includes(upperLetter)) {
       return;
@@ -183,7 +225,15 @@ io.on('connection', (socket) => {
         }
       }
       
-      if (!room.revealed.includes('_')) {
+      let allRevealed = true;
+      for (let i = 0; i < room.word.length; i++) {
+        if (/[A-Z0-9]/.test(room.word[i]) && room.revealed[i] === '_') {
+          allRevealed = false;
+          break;
+        }
+      }
+      
+      if (allRevealed) {
         room.gameOver = true;
         room.winner = true;
         room.roomState = 'round_ended';
@@ -252,6 +302,7 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room) return;
     if (room.roomState !== 'round_active') return;
+    if (room.players.length < 2) return;
     
     const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
     if (playerIndex === -1) return;
@@ -259,9 +310,16 @@ io.on('connection', (socket) => {
     if (playerIndex === room.hostIndex) return;
 
     const upperWord = word.toUpperCase().trim();
-    if (!upperWord || room.wrongWords.includes(upperWord)) return;
+    if (!upperWord) return;
+    
+    // Normalize both for comparison (remove non-alphanumeric)
+    const normalizedGuess = normalizeForComparison(upperWord);
+    const normalizedSecret = normalizeForComparison(room.word);
+    
+    // Check if this exact guess was already tried
+    if (room.wrongWords.includes(normalizedGuess)) return;
 
-    if (upperWord === room.word) {
+    if (normalizedGuess === normalizedSecret) {
       room.revealed = room.word.split('');
       room.gameOver = true;
       room.winner = true;
@@ -290,7 +348,7 @@ io.on('connection', (socket) => {
       }, 3000);
       return;
     } else {
-      room.wrongWords.push(upperWord);
+      room.wrongWords.push(normalizedGuess);
       room.hollywoodIndex++;
       
       if (room.hollywoodIndex >= 9) {
@@ -355,29 +413,38 @@ io.on('connection', (socket) => {
         if (room.players.length === 0) {
           delete rooms[roomId];
         } else {
+          // Adjust hostIndex if needed
           if (playerIndex < room.hostIndex) {
             room.hostIndex--;
           } else if (playerIndex === room.hostIndex) {
             room.hostIndex = room.hostIndex % room.players.length;
           }
           
+          // Adjust turnIndex if needed
           if (room.turnIndex !== null) {
             if (playerIndex < room.turnIndex) {
               room.turnIndex--;
             } else if (playerIndex === room.turnIndex) {
-              room.turnIndex = room.turnIndex % room.players.length;
-              if (room.turnIndex === room.hostIndex) {
-                room.turnIndex = getNextTurnIndex(room);
-              }
+              room.turnIndex = getNextTurnIndex(room);
             }
           }
           
-          room.roomState = 'waiting_for_host_input';
-          room.word = '';
-          room.clues = [];
-          room.revealed = [];
-          room.gameOver = false;
-          room.turnIndex = null;
+          // If less than 2 players, stop the round
+          if (room.players.length < 2) {
+            room.roomState = 'waiting_for_players';
+            room.turnIndex = null;
+            room.word = '';
+            room.clues = [];
+            room.revealed = [];
+            room.gameOver = false;
+          } else {
+            room.roomState = 'waiting_for_host_input';
+            room.word = '';
+            room.clues = [];
+            room.revealed = [];
+            room.gameOver = false;
+            room.turnIndex = null;
+          }
           
           broadcastRoomState(roomId);
         }

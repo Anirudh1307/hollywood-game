@@ -22,7 +22,14 @@ socket.on('game-state', (state) => {
   
   const isHost = gameState.hostSocketId === mySocketId;
   
-  if (gameState.roomState === 'waiting_for_host_input') {
+  if (gameState.roomState === 'waiting_for_players') {
+    document.getElementById('hostSetup').style.display = 'none';
+    document.getElementById('waitingArea').style.display = 'block';
+    document.getElementById('gameArea').style.display = 'none';
+    document.getElementById('waitingMessage').style.display = 'block';
+    document.getElementById('hostWaitingText').style.display = 'none';
+    renderWaitingChat();
+  } else if (gameState.roomState === 'waiting_for_host_input') {
     if (isHost) {
       document.getElementById('hostSetup').style.display = 'block';
       document.getElementById('waitingArea').style.display = 'none';
@@ -32,6 +39,8 @@ socket.on('game-state', (state) => {
       document.getElementById('hostSetup').style.display = 'none';
       document.getElementById('waitingArea').style.display = 'block';
       document.getElementById('gameArea').style.display = 'none';
+      document.getElementById('waitingMessage').style.display = 'none';
+      document.getElementById('hostWaitingText').style.display = 'block';
       const hostName = gameState.players[gameState.hostIndex].username;
       document.getElementById('currentHostName').textContent = hostName;
       renderWaitingChat();
@@ -40,6 +49,7 @@ socket.on('game-state', (state) => {
     document.getElementById('hostSetup').style.display = 'none';
     document.getElementById('waitingArea').style.display = 'none';
     document.getElementById('gameArea').style.display = 'block';
+    document.getElementById('waitingMessage').style.display = 'none';
     renderGame();
   }
 });
@@ -112,6 +122,8 @@ function renderKeypad() {
   const keypad = document.getElementById('keypad');
   keypad.innerHTML = '';
   
+  // Only alphanumeric characters are guessable
+  // Non-alphanumeric chars (spaces, symbols) are auto-revealed and never guessable
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const isHost = gameState.hostSocketId === mySocketId;
   const isMyTurn = gameState.turnSocketId === mySocketId;
