@@ -22,6 +22,21 @@ socket.on('need-name', (need) => {
 
 socket.on('is-host', (host) => {
   isHost = host;
+  if (gameState) {
+    if (!gameState.gameStarted && isHost) {
+      document.getElementById('hostSetup').style.display = 'block';
+      document.getElementById('waitingArea').style.display = 'none';
+      document.getElementById('gameArea').style.display = 'none';
+      renderHostChat();
+    } else if (!gameState.gameStarted && !isHost) {
+      document.getElementById('hostSetup').style.display = 'none';
+      document.getElementById('waitingArea').style.display = 'block';
+      document.getElementById('gameArea').style.display = 'none';
+      const hostName = gameState.playerNames[gameState.hostSocketId] || 'Host';
+      document.getElementById('currentHostName').textContent = hostName;
+      renderWaitingChat();
+    }
+  }
 });
 
 socket.on('game-state', (state) => {

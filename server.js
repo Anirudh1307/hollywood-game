@@ -134,7 +134,9 @@ io.on('connection', (socket) => {
     room.nextHostId = room.players[nextIndex2];
 
     io.to(roomId).emit('game-state', room);
-    io.to(room.hostSocketId).emit('is-host', true);
+    room.players.forEach(playerId => {
+      io.to(playerId).emit('is-host', playerId === nextHost);
+    });
   });
 
   socket.on('chat-message', ({ roomId, message }) => {
