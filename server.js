@@ -15,12 +15,6 @@ function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-function getNextHost(room) {
-  const currentIndex = room.players.indexOf(room.hostSocketId);
-  const nextIndex = (currentIndex + 1) % room.players.length;
-  return room.players[nextIndex];
-}
-
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -34,134 +28,141 @@ app.post('/create-room', (req, res) => {
   res.json({ roomId });
 });
 
+function broadcastRoomState(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+  
+  const currentHost = room.players[room.hostIndex];
+  const state = {
+    players: room.players,
+    hostIndex: room.hostIndex,
+    hostSocketId: currentHost.socketId,
+    roomState: room.roomState,
+    word: room.word,
+    clues: room.clues,
+    revealed: room.revealed,
+    correctLetters: room.correctLetters,
+    wrongLetters: room.wrongLetters,
+    wrongWords: room.wrongWords,
+    hollywoodIndex: room.hollywoodIndex,
+    gameOver: room.gameOver,
+    winner: room.winner,
+    scores: room.scores,
+    round: room.round,
+    messages: room.messages,
+    guessedPlayers: Array.from(room.guessedPlayers)
+  };
+  
+  io.to(roomId).emit('game-state', state);
+}
+
 io.on('connection', (socket) => {
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
     
     if (!rooms[roomId]) {
       rooms[roomId] = {
-        word: null,
+        players: [],
+        hostIndex: 0,
+        roomState: 'waiting_for_host_input',
+        word: '',
         clues: [],
         revealed: [],
         correctLetters: [],
         wrongLetters: [],
         wrongWords: [],
+        guessedPlayers: new Set(),
         hollywoodIndex: 0,
         gameOver: false,
-        gameStarted: false,
-        hostSocketId: socket.id,
         winner: false,
-        players: [socket.id],
-        playerNames: {},
         scores: {},
         round: 1,
-        messages: [],
-        playersHosted: [socket.id],
-        nextHostId: null
+        messages: []
       };
-      socket.emit('is-host', true);
-      socket.emit('need-name', true);
-    } else {
-      if (!rooms[roomId].players.includes(socket.id)) {
-        rooms[roomId].players.push(socket.id);
-      }
-      socket.emit('is-host', socket.id === rooms[roomId].hostSocketId);
-      socket.emit('need-name', !rooms[roomId].playerNames[socket.id]);
-      if (rooms[roomId].playerNames[socket.id]) {
-        socket.emit('game-state', rooms[roomId]);
-      }
     }
+    
+    const existingPlayer = rooms[roomId].players.find(p => p.socketId === socket.id);
+    if (!existingPlayer) {
+      rooms[roomId].scores[socket.id] = 0;
+    }
+    
+    socket.emit('need-name', !existingPlayer);
   });
 
   socket.on('set-name', ({ roomId, name }) => {
     const room = rooms[roomId];
     if (!room) return;
 
-    room.playerNames[socket.id] = name;
-    room.scores[socket.id] = room.scores[socket.id] || 0;
-    io.to(roomId).emit('game-state', room);
+    const existingPlayer = room.players.find(p => p.socketId === socket.id);
+    if (!existingPlayer) {
+      room.players.push({ socketId: socket.id, username: name });
+      room.scores[socket.id] = 0;
+    }
+    
+    broadcastRoomState(roomId);
   });
 
   socket.on('start-game', ({ roomId, word, clues }) => {
     const room = rooms[roomId];
-    if (!room || room.hostSocketId !== socket.id) return;
+    if (!room) return;
+    
+    const currentHost = room.players[room.hostIndex];
+    if (!currentHost || currentHost.socketId !== socket.id) return;
+    if (room.roomState !== 'waiting_for_host_input') return;
 
     room.word = word.toUpperCase();
     room.clues = clues.filter(c => c.trim());
     room.revealed = Array(word.length).fill('_');
-    room.gameStarted = true;
+    room.roomState = 'round_active';
     room.gameOver = false;
     room.winner = false;
     room.correctLetters = [];
     room.wrongLetters = [];
     room.wrongWords = [];
     room.hollywoodIndex = 0;
+    room.guessedPlayers.clear();
 
-    io.to(roomId).emit('game-state', room);
+    broadcastRoomState(roomId);
   });
 
-  socket.on('next-round', (roomId) => {
+  socket.on('skip-round', (roomId) => {
     const room = rooms[roomId];
     if (!room) return;
+    
+    const currentHost = room.players[room.hostIndex];
+    if (!currentHost || currentHost.socketId !== socket.id) return;
+    if (room.roomState !== 'waiting_for_host_input') return;
 
-    const currentIndex = room.players.indexOf(room.hostSocketId);
-    let nextIndex = (currentIndex + 1) % room.players.length;
-    let nextHost = room.players[nextIndex];
-    
-    while (room.playersHosted.includes(nextHost) && room.playersHosted.length < room.players.length) {
-      nextIndex = (nextIndex + 1) % room.players.length;
-      nextHost = room.players[nextIndex];
-    }
-    
-    if (!room.playersHosted.includes(nextHost)) {
-      room.playersHosted.push(nextHost);
-    }
-    
-    room.hostSocketId = nextHost;
-    room.round++;
-    room.word = null;
+    room.hostIndex = (room.hostIndex + 1) % room.players.length;
+    room.word = '';
     room.clues = [];
     room.revealed = [];
     room.correctLetters = [];
     room.wrongLetters = [];
     room.wrongWords = [];
     room.hollywoodIndex = 0;
-    room.gameOver = false;
-    room.gameStarted = false;
-    room.winner = false;
-    
-    const nextIndex2 = (room.players.indexOf(nextHost) + 1) % room.players.length;
-    room.nextHostId = room.players[nextIndex2];
+    room.guessedPlayers.clear();
+    room.roomState = 'waiting_for_host_input';
 
-    io.to(roomId).emit('game-state', room);
-    room.players.forEach(playerId => {
-      io.to(playerId).emit('is-host', playerId === nextHost);
-    });
-  });
-
-  socket.on('chat-message', ({ roomId, message }) => {
-    const room = rooms[roomId];
-    if (!room) return;
-
-    const chatMsg = {
-      socketId: socket.id,
-      name: room.playerNames[socket.id] || 'Unknown',
-      message: message,
-      timestamp: Date.now()
-    };
-    room.messages.push(chatMsg);
-    io.to(roomId).emit('chat-message', chatMsg);
+    broadcastRoomState(roomId);
   });
 
   socket.on('guess-letter', ({ roomId, letter }) => {
     const room = rooms[roomId];
-    if (!room || !room.gameStarted || room.gameOver || socket.id === room.hostSocketId) return;
+    if (!room) return;
+    if (room.roomState !== 'round_active') return;
+    
+    const currentHost = room.players[room.hostIndex];
+    if (currentHost.socketId === socket.id) return;
+    if (room.guessedPlayers.has(socket.id)) return;
 
     const upperLetter = letter.toUpperCase();
     
     if (room.correctLetters.includes(upperLetter) || room.wrongLetters.includes(upperLetter)) {
       return;
     }
+
+    room.guessedPlayers.add(socket.id);
 
     if (room.word.includes(upperLetter)) {
       room.correctLetters.push(upperLetter);
@@ -174,7 +175,27 @@ io.on('connection', (socket) => {
       if (!room.revealed.includes('_')) {
         room.gameOver = true;
         room.winner = true;
+        room.roomState = 'round_ended';
         room.scores[socket.id] = (room.scores[socket.id] || 0) + 1;
+        
+        setTimeout(() => {
+          if (rooms[roomId]) {
+            room.hostIndex = (room.hostIndex + 1) % room.players.length;
+            room.round++;
+            room.word = '';
+            room.clues = [];
+            room.revealed = [];
+            room.correctLetters = [];
+            room.wrongLetters = [];
+            room.wrongWords = [];
+            room.hollywoodIndex = 0;
+            room.guessedPlayers.clear();
+            room.gameOver = false;
+            room.winner = false;
+            room.roomState = 'waiting_for_host_input';
+            broadcastRoomState(roomId);
+          }
+        }, 3000);
       }
     } else {
       room.wrongLetters.push(upperLetter);
@@ -183,25 +204,71 @@ io.on('connection', (socket) => {
       if (room.hollywoodIndex >= 9) {
         room.gameOver = true;
         room.winner = false;
+        room.roomState = 'round_ended';
+        
+        setTimeout(() => {
+          if (rooms[roomId]) {
+            room.hostIndex = (room.hostIndex + 1) % room.players.length;
+            room.round++;
+            room.word = '';
+            room.clues = [];
+            room.revealed = [];
+            room.correctLetters = [];
+            room.wrongLetters = [];
+            room.wrongWords = [];
+            room.hollywoodIndex = 0;
+            room.guessedPlayers.clear();
+            room.gameOver = false;
+            room.winner = false;
+            room.roomState = 'waiting_for_host_input';
+            broadcastRoomState(roomId);
+          }
+        }, 3000);
       }
     }
 
-    io.to(roomId).emit('game-state', room);
+    broadcastRoomState(roomId);
   });
 
   socket.on('guess-word', ({ roomId, word }) => {
     const room = rooms[roomId];
-    if (!room || !room.gameStarted || room.gameOver || socket.id === room.hostSocketId) return;
+    if (!room) return;
+    if (room.roomState !== 'round_active') return;
+    
+    const currentHost = room.players[room.hostIndex];
+    if (currentHost.socketId === socket.id) return;
+    if (room.guessedPlayers.has(socket.id)) return;
 
     const upperWord = word.toUpperCase().trim();
-    
     if (!upperWord || room.wrongWords.includes(upperWord)) return;
+
+    room.guessedPlayers.add(socket.id);
 
     if (upperWord === room.word) {
       room.revealed = room.word.split('');
       room.gameOver = true;
       room.winner = true;
+      room.roomState = 'round_ended';
       room.scores[socket.id] = (room.scores[socket.id] || 0) + 1;
+      
+      setTimeout(() => {
+        if (rooms[roomId]) {
+          room.hostIndex = (room.hostIndex + 1) % room.players.length;
+          room.round++;
+          room.word = '';
+          room.clues = [];
+          room.revealed = [];
+          room.correctLetters = [];
+          room.wrongLetters = [];
+          room.wrongWords = [];
+          room.hollywoodIndex = 0;
+          room.guessedPlayers.clear();
+          room.gameOver = false;
+          room.winner = false;
+          room.roomState = 'waiting_for_host_input';
+          broadcastRoomState(roomId);
+        }
+      }, 3000);
     } else {
       room.wrongWords.push(upperWord);
       room.hollywoodIndex++;
@@ -209,26 +276,75 @@ io.on('connection', (socket) => {
       if (room.hollywoodIndex >= 9) {
         room.gameOver = true;
         room.winner = false;
+        room.roomState = 'round_ended';
+        
+        setTimeout(() => {
+          if (rooms[roomId]) {
+            room.hostIndex = (room.hostIndex + 1) % room.players.length;
+            room.round++;
+            room.word = '';
+            room.clues = [];
+            room.revealed = [];
+            room.correctLetters = [];
+            room.wrongLetters = [];
+            room.wrongWords = [];
+            room.hollywoodIndex = 0;
+            room.guessedPlayers.clear();
+            room.gameOver = false;
+            room.winner = false;
+            room.roomState = 'waiting_for_host_input';
+            broadcastRoomState(roomId);
+          }
+        }, 3000);
       }
     }
 
-    io.to(roomId).emit('game-state', room);
+    broadcastRoomState(roomId);
+  });
+
+  socket.on('chat-message', ({ roomId, message }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
+
+    const chatMsg = {
+      socketId: socket.id,
+      name: player.username,
+      message: message,
+      timestamp: Date.now()
+    };
+    room.messages.push(chatMsg);
+    io.to(roomId).emit('chat-message', chatMsg);
   });
 
   socket.on('disconnect', () => {
     for (const roomId in rooms) {
       const room = rooms[roomId];
-      const index = room.players.indexOf(socket.id);
-      if (index > -1) {
-        room.players.splice(index, 1);
+      const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
+      
+      if (playerIndex > -1) {
+        room.players.splice(playerIndex, 1);
         delete room.scores[socket.id];
+        room.guessedPlayers.delete(socket.id);
         
         if (room.players.length === 0) {
           delete rooms[roomId];
-        } else if (room.hostSocketId === socket.id) {
-          room.hostSocketId = room.players[0];
-          io.to(room.hostSocketId).emit('is-host', true);
-          io.to(roomId).emit('game-state', room);
+        } else {
+          if (playerIndex < room.hostIndex) {
+            room.hostIndex--;
+          } else if (playerIndex === room.hostIndex) {
+            room.hostIndex = room.hostIndex % room.players.length;
+          }
+          
+          room.roomState = 'waiting_for_host_input';
+          room.word = '';
+          room.clues = [];
+          room.revealed = [];
+          room.gameOver = false;
+          
+          broadcastRoomState(roomId);
         }
       }
     }

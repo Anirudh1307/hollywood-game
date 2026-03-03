@@ -1,41 +1,18 @@
 const socket = io();
 const roomId = window.location.pathname.split('/')[2];
-let isHost = false;
 let gameState = null;
 let mySocketId = null;
-let needName = false;
 
 socket.on('connect', () => {
   mySocketId = socket.id;
 });
 
 document.getElementById('roomId').textContent = roomId;
-
 socket.emit('join-room', roomId);
 
 socket.on('need-name', (need) => {
-  needName = need;
-  if (needName) {
+  if (need) {
     document.getElementById('nameSetup').style.display = 'block';
-  }
-});
-
-socket.on('is-host', (host) => {
-  isHost = host;
-  if (gameState) {
-    if (!gameState.gameStarted && isHost) {
-      document.getElementById('hostSetup').style.display = 'block';
-      document.getElementById('waitingArea').style.display = 'none';
-      document.getElementById('gameArea').style.display = 'none';
-      renderHostChat();
-    } else if (!gameState.gameStarted && !isHost) {
-      document.getElementById('hostSetup').style.display = 'none';
-      document.getElementById('waitingArea').style.display = 'block';
-      document.getElementById('gameArea').style.display = 'none';
-      const hostName = gameState.playerNames[gameState.hostSocketId] || 'Host';
-      document.getElementById('currentHostName').textContent = hostName;
-      renderWaitingChat();
-    }
   }
 });
 
@@ -43,25 +20,28 @@ socket.on('game-state', (state) => {
   gameState = state;
   document.getElementById('nameSetup').style.display = 'none';
   
-  if (!gameState.gameStarted && isHost) {
-    document.getElementById('hostSetup').style.display = 'block';
-    document.getElementById('waitingArea').style.display = 'none';
-    document.getElementById('gameArea').style.display = 'none';
-    renderHostChat();
-  } else if (!gameState.gameStarted && !isHost) {
-    document.getElementById('hostSetup').style.display = 'none';
-    document.getElementById('waitingArea').style.display = 'block';
-    document.getElementById('gameArea').style.display = 'none';
-    const hostName = gameState.playerNames[gameState.hostSocketId] || 'Host';
-    document.getElementById('currentHostName').textContent = hostName;
-    renderWaitingChat();
+  const isHost = gameState.hostSocketId === mySocketId;
+  
+  if (gameState.roomState === 'waiting_for_host_input') {
+    if (isHost) {
+      document.getElementById('hostSetup').style.display = 'block';
+      document.getElementById('waitingArea').style.display = 'none';
+      document.getElementById('gameArea').style.display = 'none';
+      renderHostChat();
+    } else {
+      document.getElementById('hostSetup').style.display = 'none';
+      document.getElementById('waitingArea').style.display = 'block';
+      document.getElementById('gameArea').style.display = 'none';
+      const hostName = gameState.players[gameState.hostIndex].username;
+      document.getElementById('currentHostName').textContent = hostName;
+      renderWaitingChat();
+    }
   } else {
     document.getElementById('hostSetup').style.display = 'none';
     document.getElementById('waitingArea').style.display = 'none';
     document.getElementById('gameArea').style.display = 'block';
+    renderGame();
   }
-  
-  renderGame();
 });
 
 function renderGame() {
@@ -115,6 +95,8 @@ function renderKeypad() {
   keypad.innerHTML = '';
   
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const isHost = gameState.hostSocketId === mySocketId;
+  const hasGuessed = gameState.guessedPlayers.includes(mySocketId);
   
   for (const letter of alphabet) {
     const button = document.createElement('button');
@@ -124,7 +106,7 @@ function renderKeypad() {
     const used = gameState.correctLetters.includes(letter) || 
                   gameState.wrongLetters.includes(letter);
     
-    if (used || gameState.gameOver || isHost) {
+    if (used || gameState.gameOver || isHost || hasGuessed || gameState.roomState !== 'round_active') {
       button.disabled = true;
       if (used) button.classList.add('used');
     }
@@ -150,10 +132,10 @@ function renderGameOver() {
   const input = document.getElementById('wordGuessInput');
   const button = document.getElementById('guessWordBtn');
   
-  if (isHost) {
-    input.disabled = true;
-    button.disabled = true;
-  } else if (gameState.gameOver) {
+  const isHost = gameState.hostSocketId === mySocketId;
+  const hasGuessed = gameState.guessedPlayers.includes(mySocketId);
+  
+  if (isHost || hasGuessed || gameState.roomState !== 'round_active') {
     input.disabled = true;
     button.disabled = true;
   } else {
@@ -164,23 +146,9 @@ function renderGameOver() {
   if (gameState.gameOver) {
     message.style.display = 'block';
     message.className = gameState.winner ? 'game-over win' : 'game-over lose';
-    
-    const allPlayersHosted = gameState.players.every(p => gameState.playersHosted && gameState.playersHosted.includes(p));
-    
-    if (allPlayersHosted) {
-      message.innerHTML = gameState.winner 
-        ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p><p>All players have hosted. Game complete!</p>`
-        : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p><p>All players have hosted. Game complete!</p>`;
-    } else {
-      const nextHostName = gameState.playerNames[gameState.nextHostId] || 'Next player';
-      message.innerHTML = gameState.winner 
-        ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p><p>Next host: ${nextHostName}</p>`
-        : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p><p>Next host: ${nextHostName}</p>`;
-      
-      setTimeout(() => {
-        socket.emit('next-round', roomId);
-      }, 3000);
-    }
+    message.innerHTML = gameState.winner 
+      ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p><p>Next round starting...</p>`
+      : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p><p>Next round starting...</p>`;
   } else {
     message.style.display = 'none';
   }
@@ -190,15 +158,16 @@ function renderScoreboard() {
   const scoreboard = document.getElementById('scoreboard');
   if (!scoreboard) return;
   
-  const hostName = gameState.playerNames[gameState.hostSocketId] || 'Host';
+  const hostName = gameState.players[gameState.hostIndex].username;
   let html = `<h4>Round ${gameState.round} - Current Host: ${hostName}</h4>`;
-  for (const playerId in gameState.scores) {
-    const isCurrentHost = playerId === gameState.hostSocketId;
+  
+  gameState.players.forEach(player => {
+    const isCurrentHost = player.socketId === gameState.hostSocketId;
     const prefix = isCurrentHost ? '👑 ' : '';
-    const suffix = playerId === mySocketId ? ' (You)' : '';
-    const playerName = gameState.playerNames[playerId] || 'Player';
-    html += `<div>${prefix}${playerName}${suffix}: ${gameState.scores[playerId]}</div>`;
-  }
+    const suffix = player.socketId === mySocketId ? ' (You)' : '';
+    html += `<div>${prefix}${player.username}${suffix}: ${gameState.scores[player.socketId] || 0}</div>`;
+  });
+  
   scoreboard.innerHTML = html;
 }
 
@@ -208,8 +177,7 @@ function renderChat() {
   
   chatMessages.innerHTML = gameState.messages.map(msg => {
     const isMe = msg.socketId === mySocketId;
-    const name = msg.name || 'Unknown';
-    return `<div class="chat-msg"><strong>${name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
+    return `<div class="chat-msg"><strong>${msg.name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
   }).join('');
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -220,8 +188,7 @@ function renderHostChat() {
   
   chatMessages.innerHTML = gameState.messages.map(msg => {
     const isMe = msg.socketId === mySocketId;
-    const name = msg.name || 'Unknown';
-    return `<div class="chat-msg"><strong>${name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
+    return `<div class="chat-msg"><strong>${msg.name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
   }).join('');
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -232,13 +199,12 @@ function renderWaitingChat() {
   
   chatMessages.innerHTML = gameState.messages.map(msg => {
     const isMe = msg.socketId === mySocketId;
-    const name = msg.name || 'Unknown';
-    return `<div class="chat-msg"><strong>${name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
+    return `<div class="chat-msg"><strong>${msg.name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
   }).join('');
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-socket.on('chat-message', (msg) => {
+socket.on('chat-message', () => {
   if (gameState) {
     renderChat();
     renderHostChat();
@@ -290,6 +256,10 @@ document.getElementById('startGameBtn').addEventListener('click', () => {
   socket.emit('start-game', { roomId, word, clues });
 });
 
+document.getElementById('skipRoundBtn').addEventListener('click', () => {
+  socket.emit('skip-round', roomId);
+});
+
 document.getElementById('guessWordBtn').addEventListener('click', () => {
   const word = document.getElementById('wordGuessInput').value.trim();
   if (word) {
@@ -312,9 +282,10 @@ document.getElementById('sendChatBtn').addEventListener('click', () => {
     input.value = '';
     
     if (gameState && gameState.messages) {
+      const player = gameState.players.find(p => p.socketId === mySocketId);
       gameState.messages.push({
         socketId: mySocketId,
-        name: gameState.playerNames[mySocketId] || 'You',
+        name: player ? player.username : 'You',
         message: message,
         timestamp: Date.now()
       });
@@ -349,9 +320,10 @@ document.getElementById('hostSendChatBtn').addEventListener('click', () => {
     input.value = '';
     
     if (gameState && gameState.messages) {
+      const player = gameState.players.find(p => p.socketId === mySocketId);
       gameState.messages.push({
         socketId: mySocketId,
-        name: gameState.playerNames[mySocketId] || 'You',
+        name: player ? player.username : 'You',
         message: message,
         timestamp: Date.now()
       });
@@ -368,17 +340,14 @@ document.getElementById('waitingSendChatBtn').addEventListener('click', () => {
     input.value = '';
     
     if (gameState && gameState.messages) {
+      const player = gameState.players.find(p => p.socketId === mySocketId);
       gameState.messages.push({
         socketId: mySocketId,
-        name: gameState.playerNames[mySocketId] || 'You',
+        name: player ? player.username : 'You',
         message: message,
         timestamp: Date.now()
       });
       renderWaitingChat();
     }
   }
-});
-
-socket.on('chat-message', () => {
-  if (gameState) renderChat();
 });
