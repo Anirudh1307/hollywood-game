@@ -55,7 +55,9 @@ io.on('connection', (socket) => {
         playerNames: {},
         scores: {},
         round: 1,
-        messages: []
+        messages: [],
+        playersHosted: [socket.id],
+        nextHostId: null
       };
       socket.emit('is-host', true);
       socket.emit('need-name', true);
@@ -102,7 +104,20 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room) return;
 
-    room.hostSocketId = getNextHost(room);
+    const currentIndex = room.players.indexOf(room.hostSocketId);
+    let nextIndex = (currentIndex + 1) % room.players.length;
+    let nextHost = room.players[nextIndex];
+    
+    while (room.playersHosted.includes(nextHost) && room.playersHosted.length < room.players.length) {
+      nextIndex = (nextIndex + 1) % room.players.length;
+      nextHost = room.players[nextIndex];
+    }
+    
+    if (!room.playersHosted.includes(nextHost)) {
+      room.playersHosted.push(nextHost);
+    }
+    
+    room.hostSocketId = nextHost;
     room.round++;
     room.word = null;
     room.clues = [];
@@ -114,6 +129,9 @@ io.on('connection', (socket) => {
     room.gameOver = false;
     room.gameStarted = false;
     room.winner = false;
+    
+    const nextIndex2 = (room.players.indexOf(nextHost) + 1) % room.players.length;
+    room.nextHostId = room.players[nextIndex2];
 
     io.to(roomId).emit('game-state', room);
     io.to(room.hostSocketId).emit('is-host', true);

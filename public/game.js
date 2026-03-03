@@ -97,7 +97,7 @@ function renderKeypad() {
   const keypad = document.getElementById('keypad');
   keypad.innerHTML = '';
   
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   
   for (const letter of alphabet) {
     const button = document.createElement('button');
@@ -147,15 +147,22 @@ function renderGameOver() {
   if (gameState.gameOver) {
     message.style.display = 'block';
     message.className = gameState.winner ? 'game-over win' : 'game-over lose';
-    message.innerHTML = gameState.winner 
-      ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p><button id="nextRoundBtn" class="btn-primary">Next Round</button>`
-      : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p><button id="nextRoundBtn" class="btn-primary">Next Round</button>`;
     
-    const nextBtn = document.getElementById('nextRoundBtn');
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => {
+    const allPlayersHosted = gameState.players.every(p => gameState.playersHosted && gameState.playersHosted.includes(p));
+    
+    if (allPlayersHosted) {
+      message.innerHTML = gameState.winner 
+        ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p><p>All players have hosted. Game complete!</p>`
+        : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p><p>All players have hosted. Game complete!</p>`;
+    } else {
+      const nextHostName = gameState.playerNames[gameState.nextHostId] || 'Next player';
+      message.innerHTML = gameState.winner 
+        ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p><p>Next host: ${nextHostName}</p>`
+        : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p><p>Next host: ${nextHostName}</p>`;
+      
+      setTimeout(() => {
         socket.emit('next-round', roomId);
-      });
+      }, 3000);
     }
   } else {
     message.style.display = 'none';
@@ -180,7 +187,7 @@ function renderScoreboard() {
 
 function renderChat() {
   const chatMessages = document.getElementById('chatMessages');
-  if (!chatMessages) return;
+  if (!chatMessages || !gameState || !gameState.messages) return;
   
   chatMessages.innerHTML = gameState.messages.map(msg => {
     const isMe = msg.socketId === mySocketId;
@@ -189,6 +196,12 @@ function renderChat() {
   }).join('');
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
+
+socket.on('chat-message', (msg) => {
+  if (gameState) {
+    renderChat();
+  }
+});
 
 document.getElementById('submitNameBtn').addEventListener('click', () => {
   const name = document.getElementById('nameInput').value.trim();
