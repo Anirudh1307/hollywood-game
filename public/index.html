@@ -11,6 +11,13 @@
     <h1>HOLLYWOOD</h1>
     <p class="subtitle">Multiplayer Word Guessing Game</p>
     <button id="createRoomBtn" class="btn-primary">Create Room</button>
+    
+    <div style="margin-top: 30px;">
+      <p>Or join an existing room:</p>
+      <input type="text" id="roomCodeInput" placeholder="Enter room code" maxlength="6" style="padding: 10px; font-size: 1.1em; border: 2px solid #ddd; border-radius: 8px;">
+      <button id="joinRoomBtn" class="btn-secondary" style="margin-left: 10px;">Join Room</button>
+      <div id="joinError" style="color: red; margin-top: 10px; display: none;"></div>
+    </div>
   </div>
 
   <script>
@@ -18,6 +25,38 @@
       const response = await fetch('/create-room', { method: 'POST' });
       const { roomId } = await response.json();
       window.location.href = `/room/${roomId}`;
+    });
+    
+    document.getElementById('joinRoomBtn').addEventListener('click', async () => {
+      const roomId = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+      if (!roomId) {
+        showError('Please enter a room code');
+        return;
+      }
+      
+      const response = await fetch('/validate-room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId })
+      });
+      const { exists } = await response.json();
+      
+      if (exists) {
+        window.location.href = `/room/${roomId}`;
+      } else {
+        showError('Room not found');
+      }
+    });
+    
+    function showError(msg) {
+      const errorDiv = document.getElementById('joinError');
+      errorDiv.textContent = msg;
+      errorDiv.style.display = 'block';
+      setTimeout(() => { errorDiv.style.display = 'none'; }, 3000);
+    }
+    
+    document.getElementById('roomCodeInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') document.getElementById('joinRoomBtn').click();
     });
   </script>
 </body>

@@ -8,15 +8,14 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 app.use(express.static('public'));
+app.use(express.json());
 
 const rooms = {};
 
-// Helper: Check if character is alphanumeric
 function isAlphanumeric(char) {
   return /[A-Z0-9]/.test(char);
 }
 
-// Helper: Normalize word by removing non-alphanumeric for comparison
 function normalizeForComparison(word) {
   return word.toUpperCase().split('').filter(isAlphanumeric).join('');
 }
@@ -38,20 +37,26 @@ app.post('/create-room', (req, res) => {
   res.json({ roomId });
 });
 
+app.post('/validate-room', (req, res) => {
+  const { roomId } = req.body;
+  const exists = !!rooms[roomId];
+  res.json({ exists });
+});
+
 function getNextTurnIndex(room) {
   if (room.players.length < 2) return null;
-  
-  // With 2 players, toggle between them (one is host, one guesses)
   if (room.players.length === 2) {
     return room.hostIndex === 0 ? 1 : 0;
   }
-  
-  // With 3+ players, cycle to next non-host player
   let next = (room.turnIndex + 1) % room.players.length;
   while (next === room.hostIndex) {
     next = (next + 1) % room.players.length;
   }
   return next;
+}
+
+function getSortedPlayers(room) {
+  return [...room.players].sort((a, b) => (room.scores[b.socketId] || 0) - (room.scores[a.socketId] || 0));
 }
 
 function broadcastRoomState(roomId) {
@@ -63,10 +68,11 @@ function broadcastRoomState(roomId) {
   
   const state = {
     players: room.players,
+    sortedPlayers: getSortedPlayers(room),
     hostIndex: room.hostIndex,
     turnIndex: room.turnIndex,
-    hostSocketId: currentHost.socketId,
-    turnSocketId: currentTurnPlayer ? currentTurnPlayer.socketId : null,
+    hostSocketId: currentHost?.socketId,
+    turnSocketId: currentTurnPlayer?.socketId,
     roomState: room.roomState,
     word: room.word,
     clues: room.clues,
@@ -79,10 +85,16 @@ function broadcastRoomState(roomId) {
     winner: room.winner,
     scores: room.scores,
     round: room.round,
-    messages: room.messages
+    messages: room.messages,
+    masterHostIndex: room.masterHostIndex
   };
   
   io.to(roomId).emit('game-state', state);
+}
+
+function clearTimers(room) {
+  if (room.timers.hostTimer) clearTimeout(room.timers.hostTimer);
+  if (room.timers.turnTimer) clearTimeout(room.timers.turnTimer);
 }
 
 io.on('connection', (socket) => {
@@ -92,6 +104,7 @@ io.on('connection', (socket) => {
     if (!rooms[roomId]) {
       rooms[roomId] = {
         players: [],
+        masterHostIndex: 0,
         hostIndex: 0,
         turnIndex: null,
         roomState: 'waiting_for_host_input',
@@ -106,7 +119,8 @@ io.on('connection', (socket) => {
         winner: false,
         scores: {},
         round: 1,
-        messages: []
+        messages: [],
+        timers: { hostTimer: null, turnTimer: null }
       };
     }
     
@@ -128,7 +142,6 @@ io.on('connection', (socket) => {
       room.scores[socket.id] = 0;
     }
     
-    // Update room state based on player count
     if (room.players.length < 2) {
       room.roomState = 'waiting_for_players';
     } else if (room.roomState === 'waiting_for_players') {
@@ -142,7 +155,6 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room) return;
     
-    // Require at least 2 players
     if (room.players.length < 2) {
       socket.emit('error', 'At least 2 players required to start.');
       return;
@@ -152,10 +164,11 @@ io.on('connection', (socket) => {
     if (!currentHost || currentHost.socketId !== socket.id) return;
     if (room.roomState !== 'waiting_for_host_input') return;
 
+    clearTimers(room);
+    
     room.word = word.toUpperCase();
     room.clues = clues.filter(c => c.trim());
     
-    // Initialize revealed: non-alphanumeric chars visible, alphanumeric hidden
     room.revealed = [];
     for (let i = 0; i < room.word.length; i++) {
       const char = room.word[i];
@@ -171,6 +184,14 @@ io.on('connection', (socket) => {
     room.hollywoodIndex = 0;
     
     room.turnIndex = (room.hostIndex + 1) % room.players.length;
+    
+    // Start turn timer (120 seconds)
+    room.timers.turnTimer = setTimeout(() => {
+      if (rooms[roomId] && room.roomState === 'round_active') {
+        room.turnIndex = getNextTurnIndex(room);
+        broadcastRoomState(roomId);
+      }
+    }, 120000);
 
     broadcastRoomState(roomId);
   });
@@ -183,6 +204,8 @@ io.on('connection', (socket) => {
     if (!currentHost || currentHost.socketId !== socket.id) return;
     if (room.roomState !== 'waiting_for_host_input') return;
 
+    clearTimers(room);
+    
     room.hostIndex = (room.hostIndex + 1) % room.players.length;
     room.turnIndex = null;
     room.word = '';
@@ -210,7 +233,6 @@ io.on('connection', (socket) => {
 
     const upperLetter = letter.toUpperCase();
     
-    // Reject non-alphanumeric guesses
     if (!/^[A-Z0-9]$/.test(upperLetter)) return;
     
     if (room.correctLetters.includes(upperLetter) || room.wrongLetters.includes(upperLetter)) {
@@ -234,10 +256,11 @@ io.on('connection', (socket) => {
       }
       
       if (allRevealed) {
+        clearTimers(room);
         room.gameOver = true;
         room.winner = true;
         room.roomState = 'round_ended';
-        room.scores[socket.id] = (room.scores[socket.id] || 0) + 1;
+        room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
         
         broadcastRoomState(roomId);
         
@@ -258,7 +281,7 @@ io.on('connection', (socket) => {
             room.roomState = 'waiting_for_host_input';
             broadcastRoomState(roomId);
           }
-        }, 3000);
+        }, 5000);
         return;
       }
     } else {
@@ -266,9 +289,11 @@ io.on('connection', (socket) => {
       room.hollywoodIndex++;
       
       if (room.hollywoodIndex >= 9) {
+        clearTimers(room);
         room.gameOver = true;
         room.winner = false;
         room.roomState = 'round_ended';
+        room.scores[room.players[room.hostIndex].socketId] = (room.scores[room.players[room.hostIndex].socketId] || 0) + 10;
         
         broadcastRoomState(roomId);
         
@@ -289,12 +314,22 @@ io.on('connection', (socket) => {
             room.roomState = 'waiting_for_host_input';
             broadcastRoomState(roomId);
           }
-        }, 3000);
+        }, 5000);
         return;
       }
     }
 
+    clearTimers(room);
     room.turnIndex = getNextTurnIndex(room);
+    
+    // Restart turn timer
+    room.timers.turnTimer = setTimeout(() => {
+      if (rooms[roomId] && room.roomState === 'round_active') {
+        room.turnIndex = getNextTurnIndex(room);
+        broadcastRoomState(roomId);
+      }
+    }, 120000);
+    
     broadcastRoomState(roomId);
   });
 
@@ -312,19 +347,18 @@ io.on('connection', (socket) => {
     const upperWord = word.toUpperCase().trim();
     if (!upperWord) return;
     
-    // Normalize both for comparison (remove non-alphanumeric)
     const normalizedGuess = normalizeForComparison(upperWord);
     const normalizedSecret = normalizeForComparison(room.word);
     
-    // Check if this exact guess was already tried
     if (room.wrongWords.includes(normalizedGuess)) return;
 
     if (normalizedGuess === normalizedSecret) {
+      clearTimers(room);
       room.revealed = room.word.split('');
       room.gameOver = true;
       room.winner = true;
       room.roomState = 'round_ended';
-      room.scores[socket.id] = (room.scores[socket.id] || 0) + 1;
+      room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
       
       broadcastRoomState(roomId);
       
@@ -345,16 +379,18 @@ io.on('connection', (socket) => {
           room.roomState = 'waiting_for_host_input';
           broadcastRoomState(roomId);
         }
-      }, 3000);
+      }, 5000);
       return;
     } else {
       room.wrongWords.push(normalizedGuess);
       room.hollywoodIndex++;
       
       if (room.hollywoodIndex >= 9) {
+        clearTimers(room);
         room.gameOver = true;
         room.winner = false;
         room.roomState = 'round_ended';
+        room.scores[room.players[room.hostIndex].socketId] = (room.scores[room.players[room.hostIndex].socketId] || 0) + 10;
         
         broadcastRoomState(roomId);
         
@@ -375,12 +411,21 @@ io.on('connection', (socket) => {
             room.roomState = 'waiting_for_host_input';
             broadcastRoomState(roomId);
           }
-        }, 3000);
+        }, 5000);
         return;
       }
     }
 
+    clearTimers(room);
     room.turnIndex = getNextTurnIndex(room);
+    
+    room.timers.turnTimer = setTimeout(() => {
+      if (rooms[roomId] && room.roomState === 'round_active') {
+        room.turnIndex = getNextTurnIndex(room);
+        broadcastRoomState(roomId);
+      }
+    }, 120000);
+    
     broadcastRoomState(roomId);
   });
 
@@ -401,6 +446,20 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('chat-message', chatMsg);
   });
 
+  socket.on('kick-player', ({ roomId, targetSocketId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    
+    const kicker = room.players.find(p => p.socketId === socket.id);
+    if (!kicker || room.masterHostIndex !== room.players.indexOf(kicker)) return;
+    
+    const targetSocket = io.sockets.sockets.get(targetSocketId);
+    if (targetSocket) {
+      targetSocket.emit('kicked');
+      targetSocket.disconnect();
+    }
+  });
+
   socket.on('disconnect', () => {
     for (const roomId in rooms) {
       const room = rooms[roomId];
@@ -411,16 +470,21 @@ io.on('connection', (socket) => {
         delete room.scores[socket.id];
         
         if (room.players.length === 0) {
+          clearTimers(room);
           delete rooms[roomId];
         } else {
-          // Adjust hostIndex if needed
           if (playerIndex < room.hostIndex) {
             room.hostIndex--;
           } else if (playerIndex === room.hostIndex) {
             room.hostIndex = room.hostIndex % room.players.length;
           }
           
-          // Adjust turnIndex if needed
+          if (playerIndex < room.masterHostIndex) {
+            room.masterHostIndex--;
+          } else if (playerIndex === room.masterHostIndex) {
+            room.masterHostIndex = 0;
+          }
+          
           if (room.turnIndex !== null) {
             if (playerIndex < room.turnIndex) {
               room.turnIndex--;
@@ -429,8 +493,8 @@ io.on('connection', (socket) => {
             }
           }
           
-          // If less than 2 players, stop the round
           if (room.players.length < 2) {
+            clearTimers(room);
             room.roomState = 'waiting_for_players';
             room.turnIndex = null;
             room.word = '';
