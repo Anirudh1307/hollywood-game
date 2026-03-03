@@ -97,7 +97,35 @@ function renderGame() {
   renderGameOver();
   renderScoreboard();
   renderTurnIndicator();
+  renderHostView();
+  renderTimer();
   renderChat();
+}
+
+function renderHostView() {
+  const hostPanel = document.getElementById('hostSecretWord');
+  if (!hostPanel) return;
+  
+  const isHost = gameState.hostSocketId === mySocketId;
+  const isRoundActive = gameState.roomState === 'round_active';
+  
+  if (isHost && isRoundActive) {
+    hostPanel.style.display = 'block';
+    document.getElementById('hostWordDisplay').textContent = gameState.word;
+  } else {
+    hostPanel.style.display = 'none';
+  }
+}
+
+function renderTimer() {
+  const timerDiv = document.getElementById('turnTimer');
+  if (!timerDiv) return;
+  
+  if (gameState.roomState === 'round_active' && gameState.timerSeconds !== undefined) {
+    timerDiv.textContent = `⏱️ Time: ${gameState.timerSeconds}s`;
+  } else {
+    timerDiv.textContent = '';
+  }
 }
 
 function renderTurnIndicator() {

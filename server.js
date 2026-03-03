@@ -73,6 +73,7 @@ function broadcastRoomState(roomId) {
     turnIndex: room.turnIndex,
     hostSocketId: currentHost?.socketId,
     turnSocketId: currentTurnPlayer?.socketId,
+    currentTurnPlayerName: currentTurnPlayer?.username || '',
     roomState: room.roomState,
     word: room.word,
     clues: room.clues,
@@ -86,7 +87,8 @@ function broadcastRoomState(roomId) {
     scores: room.scores,
     round: room.round,
     messages: room.messages,
-    masterHostIndex: room.masterHostIndex
+    masterHostIndex: room.masterHostIndex,
+    timerSeconds: room.timerSeconds
   };
   
   io.to(roomId).emit('game-state', state);
@@ -95,6 +97,7 @@ function broadcastRoomState(roomId) {
 function clearTimers(room) {
   if (room.timers.hostTimer) clearTimeout(room.timers.hostTimer);
   if (room.timers.turnTimer) clearTimeout(room.timers.turnTimer);
+  if (room.timers.countdownInterval) clearInterval(room.timers.countdownInterval);
 }
 
 io.on('connection', (socket) => {
@@ -120,7 +123,8 @@ io.on('connection', (socket) => {
         scores: {},
         round: 1,
         chatHistory: [],
-        timers: { hostTimer: null, turnTimer: null }
+        timers: { hostTimer: null, turnTimer: null, countdownInterval: null },
+        timerSeconds: 0
       };
     }
     
@@ -187,11 +191,23 @@ io.on('connection', (socket) => {
     room.hollywoodIndex = 0;
     
     room.turnIndex = (room.hostIndex + 1) % room.players.length;
+    room.timerSeconds = 120;
     
-    // Start turn timer (120 seconds)
+    // Countdown timer
+    room.timers.countdownInterval = setInterval(() => {
+      room.timerSeconds--;
+      if (room.timerSeconds <= 0) {
+        clearInterval(room.timers.countdownInterval);
+        room.timers.countdownInterval = null;
+      }
+      broadcastRoomState(roomId);
+    }, 1000);
+    
+    // Auto-skip turn after 120 seconds
     room.timers.turnTimer = setTimeout(() => {
       if (rooms[roomId] && room.roomState === 'round_active') {
         room.turnIndex = getNextTurnIndex(room);
+        room.timerSeconds = 120;
         broadcastRoomState(roomId);
       }
     }, 120000);
@@ -324,11 +340,23 @@ io.on('connection', (socket) => {
 
     clearTimers(room);
     room.turnIndex = getNextTurnIndex(room);
+    room.timerSeconds = 120;
+    
+    // Countdown timer
+    room.timers.countdownInterval = setInterval(() => {
+      room.timerSeconds--;
+      if (room.timerSeconds <= 0) {
+        clearInterval(room.timers.countdownInterval);
+        room.timers.countdownInterval = null;
+      }
+      broadcastRoomState(roomId);
+    }, 1000);
     
     // Restart turn timer
     room.timers.turnTimer = setTimeout(() => {
       if (rooms[roomId] && room.roomState === 'round_active') {
         room.turnIndex = getNextTurnIndex(room);
+        room.timerSeconds = 120;
         broadcastRoomState(roomId);
       }
     }, 120000);
@@ -421,10 +449,21 @@ io.on('connection', (socket) => {
 
     clearTimers(room);
     room.turnIndex = getNextTurnIndex(room);
+    room.timerSeconds = 120;
+    
+    room.timers.countdownInterval = setInterval(() => {
+      room.timerSeconds--;
+      if (room.timerSeconds <= 0) {
+        clearInterval(room.timers.countdownInterval);
+        room.timers.countdownInterval = null;
+      }
+      broadcastRoomState(roomId);
+    }, 1000);
     
     room.timers.turnTimer = setTimeout(() => {
       if (rooms[roomId] && room.roomState === 'round_active') {
         room.turnIndex = getNextTurnIndex(room);
+        room.timerSeconds = 120;
         broadcastRoomState(roomId);
       }
     }, 120000);
