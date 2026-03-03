@@ -66,7 +66,6 @@ function broadcastRoomState(roomId) {
   const currentHost = room.players[room.hostIndex];
   const currentTurnPlayer = room.turnIndex !== null ? room.players[room.turnIndex] : null;
   
-  // State WITHOUT full word (sent to all players)
   const state = {
     players: room.players,
     sortedPlayers: getSortedPlayers(room),
@@ -91,15 +90,12 @@ function broadcastRoomState(roomId) {
     timerSeconds: room.timerSeconds
   };
   
-  // Broadcast to all players (WITHOUT full word)
   io.to(roomId).emit('game-state', state);
   
-  // Send full word ONLY to host
   if (currentHost) {
     io.to(currentHost.socketId).emit('hostSecretWord', room.word);
   }
   
-  // Send round guess log ONLY to host
   if (currentHost && room.roomState === 'round_active') {
     const totalEligiblePlayers = room.players.length - 1;
     const remainingGuessers = totalEligiblePlayers - room.playersWhoGuessedThisRound.size;
@@ -151,9 +147,7 @@ io.on('connection', (socket) => {
       rooms[roomId].scores[socket.id] = 0;
     }
     
-    // Send chat history to new player
     socket.emit('chatHistory', rooms[roomId].chatHistory);
-    
     socket.emit('need-name', !existingPlayer);
   });
 
@@ -213,7 +207,6 @@ io.on('connection', (socket) => {
     room.turnIndex = (room.hostIndex + 1) % room.players.length;
     room.timerSeconds = 120;
     
-    // Countdown timer
     room.timers.countdownInterval = setInterval(() => {
       room.timerSeconds--;
       if (room.timerSeconds <= 0) {
@@ -223,7 +216,6 @@ io.on('connection', (socket) => {
       broadcastRoomState(roomId);
     }, 1000);
     
-    // Auto-skip turn after 120 seconds
     room.timers.turnTimer = setTimeout(() => {
       if (rooms[roomId] && room.roomState === 'round_active') {
         room.turnIndex = getNextTurnIndex(room);
@@ -312,6 +304,7 @@ io.on('connection', (socket) => {
         room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
         
         broadcastRoomState(roomId);
+        io.to(roomId).emit('roundResult', { word: room.word, winner: true });
         
         setTimeout(() => {
           if (rooms[roomId]) {
@@ -354,6 +347,7 @@ io.on('connection', (socket) => {
         room.scores[room.players[room.hostIndex].socketId] = (room.scores[room.players[room.hostIndex].socketId] || 0) + 10;
         
         broadcastRoomState(roomId);
+        io.to(roomId).emit('roundResult', { word: room.word, winner: false });
         
         setTimeout(() => {
           if (rooms[roomId]) {
@@ -383,7 +377,6 @@ io.on('connection', (socket) => {
     room.turnIndex = getNextTurnIndex(room);
     room.timerSeconds = 120;
     
-    // Countdown timer
     room.timers.countdownInterval = setInterval(() => {
       room.timerSeconds--;
       if (room.timerSeconds <= 0) {
@@ -393,7 +386,6 @@ io.on('connection', (socket) => {
       broadcastRoomState(roomId);
     }, 1000);
     
-    // Restart turn timer
     room.timers.turnTimer = setTimeout(() => {
       if (rooms[roomId] && room.roomState === 'round_active') {
         room.turnIndex = getNextTurnIndex(room);
@@ -443,6 +435,7 @@ io.on('connection', (socket) => {
       room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
       
       broadcastRoomState(roomId);
+      io.to(roomId).emit('roundResult', { word: room.word, winner: true });
       
       setTimeout(() => {
         if (rooms[roomId]) {
@@ -484,6 +477,7 @@ io.on('connection', (socket) => {
         room.scores[room.players[room.hostIndex].socketId] = (room.scores[room.players[room.hostIndex].socketId] || 0) + 10;
         
         broadcastRoomState(roomId);
+        io.to(roomId).emit('roundResult', { word: room.word, winner: false });
         
         setTimeout(() => {
           if (rooms[roomId]) {
@@ -540,24 +534,20 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.socketId === socket.id);
     if (!player) return;
 
-    // Validate and sanitize
     const text = String(message).trim();
     if (!text || text.length === 0 || text.length > 200) return;
 
-    // Create message object
     const chatMsg = {
       sender: player.username,
       message: text,
       timestamp: Date.now()
     };
 
-    // Store in history (limit to 50)
     room.chatHistory.push(chatMsg);
     if (room.chatHistory.length > 50) {
       room.chatHistory.shift();
     }
 
-    // Broadcast to entire room
     io.to(roomId).emit('chatUpdate', chatMsg);
   });
 

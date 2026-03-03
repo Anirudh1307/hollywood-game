@@ -65,6 +65,7 @@ socket.on('kicked', () => {
 
 socket.on('game-state', (state) => {
   gameState = state;
+  if (!gameState.hostSecretWord) gameState.hostSecretWord = '';
   document.getElementById('nameSetup').style.display = 'none';
   
   const isHost = gameState.hostSocketId === mySocketId;
@@ -181,14 +182,14 @@ function renderTurnIndicator() {
   
   const isHost = gameState.hostSocketId === mySocketId;
   const isMyTurn = gameState.turnSocketId === mySocketId;
+  const currentTurnName = gameState.currentTurnPlayerName || 'Unknown';
   
   if (isHost) {
-    indicator.innerHTML = '<div class="turn-msg host-msg">You are the host - Players are guessing</div>';
+    indicator.innerHTML = `<div class="turn-msg host-msg">You are the host - Current Turn: ${escapeHtml(currentTurnName)}</div>`;
   } else if (isMyTurn) {
     indicator.innerHTML = '<div class="turn-msg my-turn">🎯 YOUR TURN TO GUESS!</div>';
   } else {
-    const turnPlayer = gameState.players[gameState.turnIndex];
-    indicator.innerHTML = `<div class="turn-msg waiting-turn">Waiting for ${turnPlayer?.username}'s turn...</div>`;
+    indicator.innerHTML = `<div class="turn-msg waiting-turn">Waiting for ${escapeHtml(currentTurnName)}'s turn...</div>`;
   }
 }
 
