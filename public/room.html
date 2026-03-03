@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOLLYWOOD - Game Room</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div id="roomInfo">
+      <h2>Room: <span id="roomId"></span></h2>
+      <button id="copyLinkBtn" class="btn-secondary">Copy Link</button>
+    </div>
+
+    <div id="hostSetup" style="display: none;">
+      <h3>Host Setup</h3>
+      <input type="text" id="wordInput" placeholder="Enter secret word" maxlength="20">
+      <input type="text" id="clue1" placeholder="Clue 1 (optional)">
+      <input type="text" id="clue2" placeholder="Clue 2 (optional)">
+      <input type="text" id="clue3" placeholder="Clue 3 (optional)">
+      <button id="startGameBtn" class="btn-primary">Start Game</button>
+    </div>
+
+    <div id="waitingArea" style="display: none;">
+      <h3>Waiting for host to start the game...</h3>
+    </div>
+
+    <div id="gameArea" style="display: none;">
+      <div id="hollywoodDisplay" class="hollywood"></div>
+      
+      <div id="wordDisplay" class="word-display"></div>
+      
+      <div id="cluesSection" class="clues"></div>
+      
+      <div id="keypad" class="keypad"></div>
+      
+      <div class="word-guess">
+        <input type="text" id="wordGuessInput" placeholder="Guess the word">
+        <button id="guessWordBtn" class="btn-primary">Guess</button>
+      </div>
+      
+      <div class="history">
+        <div class="history-section">
+          <h4>Wrong Letters</h4>
+          <div id="wrongLetters"></div>
+        </div>
+        <div class="history-section">
+          <h4>Wrong Words</h4>
+          <div id="wrongWords"></div>
+        </div>
+      </div>
+
+      <div id="gameOverMessage" style="display: none;"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
