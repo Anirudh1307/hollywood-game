@@ -15,6 +15,12 @@ function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
+function getNextHost(room) {
+  const currentIndex = room.players.indexOf(room.hostSocketId);
+  const nextIndex = (currentIndex + 1) % room.players.length;
+  return room.players[nextIndex];
+}
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -44,15 +50,34 @@ io.on('connection', (socket) => {
         gameOver: false,
         gameStarted: false,
         hostSocketId: socket.id,
-        winner: false
+        winner: false,
+        players: [socket.id],
+        playerNames: {},
+        scores: {},
+        round: 1,
+        messages: []
       };
       socket.emit('is-host', true);
+      socket.emit('need-name', true);
     } else {
-      socket.emit('is-host', false);
-      if (rooms[roomId].gameStarted) {
+      if (!rooms[roomId].players.includes(socket.id)) {
+        rooms[roomId].players.push(socket.id);
+      }
+      socket.emit('is-host', socket.id === rooms[roomId].hostSocketId);
+      socket.emit('need-name', !rooms[roomId].playerNames[socket.id]);
+      if (rooms[roomId].playerNames[socket.id]) {
         socket.emit('game-state', rooms[roomId]);
       }
     }
+  });
+
+  socket.on('set-name', ({ roomId, name }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    room.playerNames[socket.id] = name;
+    room.scores[socket.id] = room.scores[socket.id] || 0;
+    io.to(roomId).emit('game-state', room);
   });
 
   socket.on('start-game', ({ roomId, word, clues }) => {
@@ -63,13 +88,54 @@ io.on('connection', (socket) => {
     room.clues = clues.filter(c => c.trim());
     room.revealed = Array(word.length).fill('_');
     room.gameStarted = true;
+    room.gameOver = false;
+    room.winner = false;
+    room.correctLetters = [];
+    room.wrongLetters = [];
+    room.wrongWords = [];
+    room.hollywoodIndex = 0;
 
     io.to(roomId).emit('game-state', room);
   });
 
+  socket.on('next-round', (roomId) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    room.hostSocketId = getNextHost(room);
+    room.round++;
+    room.word = null;
+    room.clues = [];
+    room.revealed = [];
+    room.correctLetters = [];
+    room.wrongLetters = [];
+    room.wrongWords = [];
+    room.hollywoodIndex = 0;
+    room.gameOver = false;
+    room.gameStarted = false;
+    room.winner = false;
+
+    io.to(roomId).emit('game-state', room);
+    io.to(room.hostSocketId).emit('is-host', true);
+  });
+
+  socket.on('chat-message', ({ roomId, message }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    const chatMsg = {
+      socketId: socket.id,
+      name: room.playerNames[socket.id] || 'Unknown',
+      message: message,
+      timestamp: Date.now()
+    };
+    room.messages.push(chatMsg);
+    io.to(roomId).emit('chat-message', chatMsg);
+  });
+
   socket.on('guess-letter', ({ roomId, letter }) => {
     const room = rooms[roomId];
-    if (!room || !room.gameStarted || room.gameOver) return;
+    if (!room || !room.gameStarted || room.gameOver || socket.id === room.hostSocketId) return;
 
     const upperLetter = letter.toUpperCase();
     
@@ -88,6 +154,7 @@ io.on('connection', (socket) => {
       if (!room.revealed.includes('_')) {
         room.gameOver = true;
         room.winner = true;
+        room.scores[socket.id] = (room.scores[socket.id] || 0) + 1;
       }
     } else {
       room.wrongLetters.push(upperLetter);
@@ -104,7 +171,7 @@ io.on('connection', (socket) => {
 
   socket.on('guess-word', ({ roomId, word }) => {
     const room = rooms[roomId];
-    if (!room || !room.gameStarted || room.gameOver) return;
+    if (!room || !room.gameStarted || room.gameOver || socket.id === room.hostSocketId) return;
 
     const upperWord = word.toUpperCase().trim();
     
@@ -114,6 +181,7 @@ io.on('connection', (socket) => {
       room.revealed = room.word.split('');
       room.gameOver = true;
       room.winner = true;
+      room.scores[socket.id] = (room.scores[socket.id] || 0) + 1;
     } else {
       room.wrongWords.push(upperWord);
       room.hollywoodIndex++;
@@ -129,8 +197,19 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     for (const roomId in rooms) {
-      if (rooms[roomId].hostSocketId === socket.id) {
-        delete rooms[roomId];
+      const room = rooms[roomId];
+      const index = room.players.indexOf(socket.id);
+      if (index > -1) {
+        room.players.splice(index, 1);
+        delete room.scores[socket.id];
+        
+        if (room.players.length === 0) {
+          delete rooms[roomId];
+        } else if (room.hostSocketId === socket.id) {
+          room.hostSocketId = room.players[0];
+          io.to(room.hostSocketId).emit('is-host', true);
+          io.to(roomId).emit('game-state', room);
+        }
       }
     }
   });

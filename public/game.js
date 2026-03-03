@@ -2,65 +2,61 @@ const socket = io();
 const roomId = window.location.pathname.split('/')[2];
 let isHost = false;
 let gameState = null;
+let mySocketId = null;
+let needName = false;
+
+socket.on('connect', () => {
+  mySocketId = socket.id;
+});
 
 document.getElementById('roomId').textContent = roomId;
 
 socket.emit('join-room', roomId);
 
+socket.on('need-name', (need) => {
+  needName = need;
+  if (needName) {
+    document.getElementById('nameSetup').style.display = 'block';
+  }
+});
+
 socket.on('is-host', (host) => {
   isHost = host;
-  if (isHost) {
-    document.getElementById('hostSetup').style.display = 'block';
-  } else {
-    document.getElementById('waitingArea').style.display = 'block';
-  }
-});
-
-document.getElementById('copyLinkBtn').addEventListener('click', () => {
-  const url = window.location.href;
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(() => {
-      alert('Link copied!');
-    }).catch(() => {
-      prompt('Copy this link:', url);
-    });
-  } else {
-    prompt('Copy this link:', url);
-  }
-});
-
-document.getElementById('startGameBtn').addEventListener('click', () => {
-  const word = document.getElementById('wordInput').value.trim();
-  if (!word) {
-    alert('Please enter a word');
-    return;
-  }
-  
-  const clues = [
-    document.getElementById('clue1').value,
-    document.getElementById('clue2').value,
-    document.getElementById('clue3').value
-  ];
-  
-  socket.emit('start-game', { roomId, word, clues });
 });
 
 socket.on('game-state', (state) => {
   gameState = state;
-  document.getElementById('hostSetup').style.display = 'none';
-  document.getElementById('waitingArea').style.display = 'none';
-  document.getElementById('gameArea').style.display = 'block';
+  document.getElementById('nameSetup').style.display = 'none';
+  
+  if (!gameState.gameStarted && isHost) {
+    document.getElementById('hostSetup').style.display = 'block';
+    document.getElementById('waitingArea').style.display = 'none';
+    document.getElementById('gameArea').style.display = 'none';
+  } else if (!gameState.gameStarted && !isHost) {
+    document.getElementById('hostSetup').style.display = 'none';
+    document.getElementById('waitingArea').style.display = 'block';
+    document.getElementById('gameArea').style.display = 'none';
+    const hostName = gameState.playerNames[gameState.hostSocketId] || 'Host';
+    document.getElementById('currentHostName').textContent = hostName;
+  } else {
+    document.getElementById('hostSetup').style.display = 'none';
+    document.getElementById('waitingArea').style.display = 'none';
+    document.getElementById('gameArea').style.display = 'block';
+  }
   
   renderGame();
 });
 
 function renderGame() {
+  if (!gameState) return;
   renderHollywood();
   renderWord();
   renderClues();
   renderKeypad();
   renderHistory();
   renderGameOver();
+  renderScoreboard();
+  renderChat();
 }
 
 function renderHollywood() {
@@ -111,13 +107,9 @@ function renderKeypad() {
     const used = gameState.correctLetters.includes(letter) || 
                   gameState.wrongLetters.includes(letter);
     
-    if (used) {
+    if (used || gameState.gameOver || isHost) {
       button.disabled = true;
-      button.classList.add('used');
-    }
-    
-    if (gameState.gameOver) {
-      button.disabled = true;
+      if (used) button.classList.add('used');
     }
     
     button.addEventListener('click', () => {
@@ -141,20 +133,106 @@ function renderGameOver() {
   const input = document.getElementById('wordGuessInput');
   const button = document.getElementById('guessWordBtn');
   
+  if (isHost) {
+    input.disabled = true;
+    button.disabled = true;
+  } else if (gameState.gameOver) {
+    input.disabled = true;
+    button.disabled = true;
+  } else {
+    input.disabled = false;
+    button.disabled = false;
+  }
+  
   if (gameState.gameOver) {
     message.style.display = 'block';
     message.className = gameState.winner ? 'game-over win' : 'game-over lose';
     message.innerHTML = gameState.winner 
-      ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p>`
-      : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p>`;
-    input.disabled = true;
-    button.disabled = true;
+      ? `<h2>🎉 YOU WIN! 🎉</h2><p>The word was: ${gameState.word}</p><button id="nextRoundBtn" class="btn-primary">Next Round</button>`
+      : `<h2>💀 GAME OVER 💀</h2><p>The word was: ${gameState.word}</p><button id="nextRoundBtn" class="btn-primary">Next Round</button>`;
+    
+    const nextBtn = document.getElementById('nextRoundBtn');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        socket.emit('next-round', roomId);
+      });
+    }
   } else {
     message.style.display = 'none';
-    input.disabled = false;
-    button.disabled = false;
   }
 }
+
+function renderScoreboard() {
+  const scoreboard = document.getElementById('scoreboard');
+  if (!scoreboard) return;
+  
+  const hostName = gameState.playerNames[gameState.hostSocketId] || 'Host';
+  let html = `<h4>Round ${gameState.round} - Current Host: ${hostName}</h4>`;
+  for (const playerId in gameState.scores) {
+    const isCurrentHost = playerId === gameState.hostSocketId;
+    const prefix = isCurrentHost ? '👑 ' : '';
+    const suffix = playerId === mySocketId ? ' (You)' : '';
+    const playerName = gameState.playerNames[playerId] || 'Player';
+    html += `<div>${prefix}${playerName}${suffix}: ${gameState.scores[playerId]}</div>`;
+  }
+  scoreboard.innerHTML = html;
+}
+
+function renderChat() {
+  const chatMessages = document.getElementById('chatMessages');
+  if (!chatMessages) return;
+  
+  chatMessages.innerHTML = gameState.messages.map(msg => {
+    const isMe = msg.socketId === mySocketId;
+    const name = msg.name || 'Unknown';
+    return `<div class="chat-msg"><strong>${name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
+  }).join('');
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+document.getElementById('submitNameBtn').addEventListener('click', () => {
+  const name = document.getElementById('nameInput').value.trim();
+  if (!name) {
+    alert('Please enter your name');
+    return;
+  }
+  socket.emit('set-name', { roomId, name });
+});
+
+document.getElementById('nameInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('submitNameBtn').click();
+  }
+});
+
+document.getElementById('copyLinkBtn').addEventListener('click', () => {
+  const url = window.location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      alert('Link copied!');
+    }).catch(() => {
+      prompt('Copy this link:', url);
+    });
+  } else {
+    prompt('Copy this link:', url);
+  }
+});
+
+document.getElementById('startGameBtn').addEventListener('click', () => {
+  const word = document.getElementById('wordInput').value.trim();
+  if (!word) {
+    alert('Please enter a word');
+    return;
+  }
+  
+  const clues = [
+    document.getElementById('clue1').value,
+    document.getElementById('clue2').value,
+    document.getElementById('clue3').value
+  ];
+  
+  socket.emit('start-game', { roomId, word, clues });
+});
 
 document.getElementById('guessWordBtn').addEventListener('click', () => {
   const word = document.getElementById('wordGuessInput').value.trim();
@@ -168,4 +246,23 @@ document.getElementById('wordGuessInput').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     document.getElementById('guessWordBtn').click();
   }
+});
+
+document.getElementById('sendChatBtn').addEventListener('click', () => {
+  const input = document.getElementById('chatInput');
+  const message = input.value.trim();
+  if (message) {
+    socket.emit('chat-message', { roomId, message });
+    input.value = '';
+  }
+});
+
+document.getElementById('chatInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('sendChatBtn').click();
+  }
+});
+
+socket.on('chat-message', () => {
+  if (gameState) renderChat();
 });

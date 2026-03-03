@@ -13,8 +13,14 @@
       <button id="copyLinkBtn" class="btn-secondary">Copy Link</button>
     </div>
 
+    <div id="nameSetup" style="display: none;">
+      <h3>Enter Your Name</h3>
+      <input type="text" id="nameInput" placeholder="Your name" maxlength="20">
+      <button id="submitNameBtn" class="btn-primary">Join Game</button>
+    </div>
+
     <div id="hostSetup" style="display: none;">
-      <h3>Host Setup</h3>
+      <h3>Host Setup - Set the Word</h3>
       <input type="text" id="wordInput" placeholder="Enter secret word" maxlength="20">
       <input type="text" id="clue1" placeholder="Clue 1 (optional)">
       <input type="text" id="clue2" placeholder="Clue 2 (optional)">
@@ -23,10 +29,12 @@
     </div>
 
     <div id="waitingArea" style="display: none;">
-      <h3>Waiting for host to start the game...</h3>
+      <h3>Waiting for <span id="currentHostName"></span> to start the game...</h3>
     </div>
 
     <div id="gameArea" style="display: none;">
+      <div id="scoreboard" class="scoreboard"></div>
+      
       <div id="hollywoodDisplay" class="hollywood"></div>
       
       <div id="wordDisplay" class="word-display"></div>
@@ -52,6 +60,15 @@
       </div>
 
       <div id="gameOverMessage" style="display: none;"></div>
+      
+      <div class="chat-container">
+        <h4>Chat</h4>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input">
+          <input type="text" id="chatInput" placeholder="Type a message...">
+          <button id="sendChatBtn" class="btn-secondary">Send</button>
+        </div>
+      </div>
     </div>
   </div>
 
