@@ -25,6 +25,11 @@
         <p style="color: #666; font-size: 0.9em;">Secret word:</p>
         <p id="hostWordDisplay" style="font-size: 1.5em; font-weight: bold; color: #333;"></p>
       </div>
+      <div id="hostRoundLog" style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: none; border-left: 4px solid #667eea;">
+        <p id="hostRemainingGuessers" style="color: #667eea; font-weight: bold; margin-bottom: 10px;"></p>
+        <h4 style="margin: 0 0 10px 0; color: #333;">Round Guess Log:</h4>
+        <div id="hostGuessList" style="max-height: 200px; overflow-y: auto;"></div>
+      </div>
       <input type="text" id="wordInput" placeholder="Enter secret word" maxlength="20">
       <input type="text" id="clue1" placeholder="Clue 1 (optional)">
       <input type="text" id="clue2" placeholder="Clue 2 (optional)">

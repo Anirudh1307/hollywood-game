@@ -43,6 +43,21 @@ socket.on('chatUpdate', (msg) => {
   addChatMessage(msg);
 });
 
+socket.on('hostSecretWord', (word) => {
+  if (gameState) {
+    gameState.hostSecretWord = word;
+    renderHostView();
+  }
+});
+
+socket.on('hostRoundUpdate', (data) => {
+  if (gameState) {
+    gameState.roundGuesses = data.roundGuesses;
+    gameState.remainingGuessers = data.remainingGuessers;
+    renderHostRoundLog();
+  }
+});
+
 socket.on('kicked', () => {
   alert('You have been kicked from the room');
   window.location.href = '/';
@@ -102,6 +117,36 @@ function renderGame() {
   renderChat();
 }
 
+function renderHostRoundLog() {
+  const logPanel = document.getElementById('hostRoundLog');
+  if (!logPanel) return;
+  
+  const isHost = gameState.hostSocketId === mySocketId;
+  const isRoundActive = gameState.roomState === 'round_active';
+  
+  if (isHost && isRoundActive && gameState.roundGuesses) {
+    logPanel.style.display = 'block';
+    
+    const remainingDiv = document.getElementById('hostRemainingGuessers');
+    if (remainingDiv) {
+      remainingDiv.textContent = `Remaining players to guess: ${gameState.remainingGuessers}`;
+    }
+    
+    const guessList = document.getElementById('hostGuessList');
+    if (guessList) {
+      guessList.innerHTML = gameState.roundGuesses.map(guess => {
+        const resultText = guess.result === 'correct_letter' ? '✓ Correct Letter' :
+                          guess.result === 'wrong_letter' ? '✗ Wrong Letter' :
+                          guess.result === 'correct_word' ? '✓ Correct Word' :
+                          '✗ Wrong Word';
+        return `<div class="guess-item"><strong>${escapeHtml(guess.playerName)}</strong> guessed "${escapeHtml(guess.value)}" (${resultText})</div>`;
+      }).join('');
+    }
+  } else {
+    logPanel.style.display = 'none';
+  }
+}
+
 function renderHostView() {
   const hostPanel = document.getElementById('hostSecretWord');
   if (!hostPanel) return;
@@ -109,12 +154,14 @@ function renderHostView() {
   const isHost = gameState.hostSocketId === mySocketId;
   const isRoundActive = gameState.roomState === 'round_active';
   
-  if (isHost && isRoundActive) {
+  if (isHost && isRoundActive && gameState.hostSecretWord) {
     hostPanel.style.display = 'block';
-    document.getElementById('hostWordDisplay').textContent = gameState.word;
+    document.getElementById('hostWordDisplay').textContent = gameState.hostSecretWord;
   } else {
     hostPanel.style.display = 'none';
   }
+  
+  renderHostRoundLog();
 }
 
 function renderTimer() {
@@ -272,10 +319,12 @@ function renderScoreboard() {
   
   gameState.sortedPlayers.forEach(player => {
     const isCurrentHost = player.socketId === gameState.hostSocketId;
-    const isMasterHost = gameState.masterHostIndex === gameState.players.indexOf(player);
+    const playerIndex = gameState.players.indexOf(player);
+    const isMasterHost = gameState.masterHostIndex === playerIndex;
     const prefix = isCurrentHost ? '👑 ' : (isMasterHost ? '⭐ ' : '');
     const suffix = player.socketId === mySocketId ? ' (You)' : '';
-    const kickBtn = isMasterHost && player.socketId !== mySocketId ? 
+    const isMeTheMasterHost = gameState.masterHostIndex === gameState.players.findIndex(p => p.socketId === mySocketId);
+    const kickBtn = isMeTheMasterHost && player.socketId !== mySocketId ? 
       ` <button class="kick-btn" onclick="kickPlayer('${player.socketId}')">Kick</button>` : '';
     html += `<div class="player-row">${prefix}${player.username}${suffix}: ${gameState.scores[player.socketId] || 0}${kickBtn}</div>`;
   });
@@ -314,7 +363,7 @@ function renderWaitingChat() {
 }
 
 function kickPlayer(targetSocketId) {
-  socket.emit('kick-player', { roomId, targetSocketId });
+  socket.emit('kickPlayer', { roomId, targetSocketId });
 }
 
 document.getElementById('submitNameBtn').addEventListener('click', () => {

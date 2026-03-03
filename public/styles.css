@@ -496,3 +496,14 @@ h1 {
   word-break: break-word;
   max-width: 100%;
 }
+
+.guess-item {
+  background: white;
+  padding: 8px 12px;
+  margin: 5px 0;
+  border-radius: 6px;
+  border-left: 3px solid #667eea;
+  color: #333;
+  font-size: 0.95em;
+  text-align: left;
+}

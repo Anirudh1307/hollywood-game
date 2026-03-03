@@ -66,6 +66,7 @@ function broadcastRoomState(roomId) {
   const currentHost = room.players[room.hostIndex];
   const currentTurnPlayer = room.turnIndex !== null ? room.players[room.turnIndex] : null;
   
+  // State WITHOUT full word (sent to all players)
   const state = {
     players: room.players,
     sortedPlayers: getSortedPlayers(room),
@@ -75,7 +76,6 @@ function broadcastRoomState(roomId) {
     turnSocketId: currentTurnPlayer?.socketId,
     currentTurnPlayerName: currentTurnPlayer?.username || '',
     roomState: room.roomState,
-    word: room.word,
     clues: room.clues,
     revealed: room.revealed,
     correctLetters: room.correctLetters,
@@ -91,7 +91,23 @@ function broadcastRoomState(roomId) {
     timerSeconds: room.timerSeconds
   };
   
+  // Broadcast to all players (WITHOUT full word)
   io.to(roomId).emit('game-state', state);
+  
+  // Send full word ONLY to host
+  if (currentHost) {
+    io.to(currentHost.socketId).emit('hostSecretWord', room.word);
+  }
+  
+  // Send round guess log ONLY to host
+  if (currentHost && room.roomState === 'round_active') {
+    const totalEligiblePlayers = room.players.length - 1;
+    const remainingGuessers = totalEligiblePlayers - room.playersWhoGuessedThisRound.size;
+    io.to(currentHost.socketId).emit('hostRoundUpdate', {
+      roundGuesses: room.roundGuesses,
+      remainingGuessers: remainingGuessers
+    });
+  }
 }
 
 function clearTimers(room) {
@@ -124,7 +140,9 @@ io.on('connection', (socket) => {
         round: 1,
         chatHistory: [],
         timers: { hostTimer: null, turnTimer: null, countdownInterval: null },
-        timerSeconds: 0
+        timerSeconds: 0,
+        roundGuesses: [],
+        playersWhoGuessedThisRound: new Set()
       };
     }
     
@@ -189,6 +207,8 @@ io.on('connection', (socket) => {
     room.wrongLetters = [];
     room.wrongWords = [];
     room.hollywoodIndex = 0;
+    room.roundGuesses = [];
+    room.playersWhoGuessedThisRound = new Set();
     
     room.turnIndex = (room.hostIndex + 1) % room.players.length;
     room.timerSeconds = 120;
@@ -258,8 +278,18 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const playerName = room.players[playerIndex].username;
+    room.playersWhoGuessedThisRound.add(socket.id);
+
     if (room.word.includes(upperLetter)) {
       room.correctLetters.push(upperLetter);
+      room.roundGuesses.push({
+        playerName,
+        guessType: 'letter',
+        value: upperLetter,
+        result: 'correct_letter',
+        timestamp: Date.now()
+      });
       for (let i = 0; i < room.word.length; i++) {
         if (room.word[i] === upperLetter) {
           room.revealed[i] = upperLetter;
@@ -298,6 +328,8 @@ io.on('connection', (socket) => {
             room.gameOver = false;
             room.winner = false;
             room.roomState = 'waiting_for_host_input';
+            room.roundGuesses = [];
+            room.playersWhoGuessedThisRound = new Set();
             broadcastRoomState(roomId);
           }
         }, 5000);
@@ -305,6 +337,13 @@ io.on('connection', (socket) => {
       }
     } else {
       room.wrongLetters.push(upperLetter);
+      room.roundGuesses.push({
+        playerName,
+        guessType: 'letter',
+        value: upperLetter,
+        result: 'wrong_letter',
+        timestamp: Date.now()
+      });
       room.hollywoodIndex++;
       
       if (room.hollywoodIndex >= 9) {
@@ -331,6 +370,8 @@ io.on('connection', (socket) => {
             room.gameOver = false;
             room.winner = false;
             room.roomState = 'waiting_for_host_input';
+            room.roundGuesses = [];
+            room.playersWhoGuessedThisRound = new Set();
             broadcastRoomState(roomId);
           }
         }, 5000);
@@ -383,7 +424,17 @@ io.on('connection', (socket) => {
     
     if (room.wrongWords.includes(normalizedGuess)) return;
 
+    const playerName = room.players[playerIndex].username;
+    room.playersWhoGuessedThisRound.add(socket.id);
+
     if (normalizedGuess === normalizedSecret) {
+      room.roundGuesses.push({
+        playerName,
+        guessType: 'word',
+        value: upperWord,
+        result: 'correct_word',
+        timestamp: Date.now()
+      });
       clearTimers(room);
       room.revealed = room.word.split('');
       room.gameOver = true;
@@ -408,12 +459,21 @@ io.on('connection', (socket) => {
           room.gameOver = false;
           room.winner = false;
           room.roomState = 'waiting_for_host_input';
+          room.roundGuesses = [];
+          room.playersWhoGuessedThisRound = new Set();
           broadcastRoomState(roomId);
         }
       }, 5000);
       return;
     } else {
       room.wrongWords.push(normalizedGuess);
+      room.roundGuesses.push({
+        playerName,
+        guessType: 'word',
+        value: upperWord,
+        result: 'wrong_word',
+        timestamp: Date.now()
+      });
       room.hollywoodIndex++;
       
       if (room.hollywoodIndex >= 9) {
@@ -440,6 +500,8 @@ io.on('connection', (socket) => {
             room.gameOver = false;
             room.winner = false;
             room.roomState = 'waiting_for_host_input';
+            room.roundGuesses = [];
+            room.playersWhoGuessedThisRound = new Set();
             broadcastRoomState(roomId);
           }
         }, 5000);
@@ -499,18 +561,63 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('chatUpdate', chatMsg);
   });
 
-  socket.on('kick-player', ({ roomId, targetSocketId }) => {
+  socket.on('kickPlayer', ({ roomId, targetSocketId }) => {
     const room = rooms[roomId];
     if (!room) return;
     
-    const kicker = room.players.find(p => p.socketId === socket.id);
-    if (!kicker || room.masterHostIndex !== room.players.indexOf(kicker)) return;
+    const kickerIndex = room.players.findIndex(p => p.socketId === socket.id);
+    if (kickerIndex === -1 || kickerIndex !== room.masterHostIndex) return;
+    
+    const targetIndex = room.players.findIndex(p => p.socketId === targetSocketId);
+    if (targetIndex === -1) return;
+    
+    room.players.splice(targetIndex, 1);
+    delete room.scores[targetSocketId];
+    
+    if (targetIndex < room.hostIndex) {
+      room.hostIndex--;
+    } else if (targetIndex === room.hostIndex) {
+      room.hostIndex = room.hostIndex % room.players.length;
+    }
+    
+    if (targetIndex < room.masterHostIndex) {
+      room.masterHostIndex--;
+    } else if (targetIndex === room.masterHostIndex) {
+      room.masterHostIndex = 0;
+    }
+    
+    if (room.turnIndex !== null) {
+      if (targetIndex < room.turnIndex) {
+        room.turnIndex--;
+      } else if (targetIndex === room.turnIndex) {
+        room.turnIndex = getNextTurnIndex(room);
+      }
+    }
+    
+    if (room.players.length < 2) {
+      clearTimers(room);
+      room.roomState = 'waiting_for_players';
+      room.turnIndex = null;
+      room.word = '';
+      room.clues = [];
+      room.revealed = [];
+      room.gameOver = false;
+    } else {
+      room.roomState = 'waiting_for_host_input';
+      room.word = '';
+      room.clues = [];
+      room.revealed = [];
+      room.gameOver = false;
+      room.turnIndex = null;
+    }
     
     const targetSocket = io.sockets.sockets.get(targetSocketId);
     if (targetSocket) {
       targetSocket.emit('kicked');
       targetSocket.disconnect();
     }
+    
+    broadcastRoomState(roomId);
   });
 
   socket.on('disconnect', () => {
