@@ -59,7 +59,7 @@ socket.on('hostRoundUpdate', (data) => {
 });
 
 socket.on('roundResult', (data) => {
-  if (data && data.word) {
+  if (gameState && data && data.word) {
     gameState.resultWord = data.word;
     console.log('Received roundResult:', data);
   }
@@ -71,8 +71,10 @@ socket.on('kicked', () => {
 });
 
 socket.on('game-state', (state) => {
+  const previousResultWord = gameState?.resultWord;
   gameState = state;
   if (!gameState.hostSecretWord) gameState.hostSecretWord = '';
+  if (previousResultWord) gameState.resultWord = previousResultWord;
   document.getElementById('nameSetup').style.display = 'none';
   
   const isHost = gameState.hostSocketId === mySocketId;
