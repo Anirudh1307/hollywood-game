@@ -75,6 +75,7 @@ socket.on('game-state', (state) => {
   gameState = state;
   if (!gameState.hostSecretWord) gameState.hostSecretWord = '';
   if (previousResultWord) gameState.resultWord = previousResultWord;
+  if (gameState.word && !gameState.resultWord) gameState.resultWord = gameState.word;
   document.getElementById('nameSetup').style.display = 'none';
   
   const isHost = gameState.hostSocketId === mySocketId;

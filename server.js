@@ -87,7 +87,8 @@ function broadcastRoomState(roomId) {
     round: room.round,
     messages: room.messages,
     masterHostIndex: room.masterHostIndex,
-    timerSeconds: room.timerSeconds
+    timerSeconds: room.timerSeconds,
+    word: room.roomState === 'round_ended' ? room.word : undefined
   };
   
   io.to(roomId).emit('game-state', state);
