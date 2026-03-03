@@ -283,6 +283,7 @@ function renderWaitingChat() {
     `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
   ).join('');
   container.scrollTop = container.scrollHeight;
+}
 
 function kickPlayer(targetSocketId) {
   socket.emit('kick-player', { roomId, targetSocketId });
