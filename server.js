@@ -119,7 +119,7 @@ io.on('connection', (socket) => {
         winner: false,
         scores: {},
         round: 1,
-        messages: [],
+        chatHistory: [],
         timers: { hostTimer: null, turnTimer: null }
       };
     }
@@ -128,6 +128,9 @@ io.on('connection', (socket) => {
     if (!existingPlayer) {
       rooms[roomId].scores[socket.id] = 0;
     }
+    
+    // Send chat history to new player
+    socket.emit('chatHistory', rooms[roomId].chatHistory);
     
     socket.emit('need-name', !existingPlayer);
   });
@@ -429,21 +432,32 @@ io.on('connection', (socket) => {
     broadcastRoomState(roomId);
   });
 
-  socket.on('chat-message', ({ roomId, message }) => {
+  socket.on('chatMessage', ({ roomId, message }) => {
     const room = rooms[roomId];
     if (!room) return;
 
     const player = room.players.find(p => p.socketId === socket.id);
     if (!player) return;
 
+    // Validate and sanitize
+    const text = String(message).trim();
+    if (!text || text.length === 0 || text.length > 200) return;
+
+    // Create message object
     const chatMsg = {
-      socketId: socket.id,
-      name: player.username,
-      message: message,
+      sender: player.username,
+      message: text,
       timestamp: Date.now()
     };
-    room.messages.push(chatMsg);
-    io.to(roomId).emit('chat-message', chatMsg);
+
+    // Store in history (limit to 50)
+    room.chatHistory.push(chatMsg);
+    if (room.chatHistory.length > 50) {
+      room.chatHistory.shift();
+    }
+
+    // Broadcast to entire room
+    io.to(roomId).emit('chatUpdate', chatMsg);
   });
 
   socket.on('kick-player', ({ roomId, targetSocketId }) => {

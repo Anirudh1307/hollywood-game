@@ -2,7 +2,24 @@ const socket = io();
 const roomId = window.location.pathname.split('/')[2];
 let gameState = null;
 let mySocketId = null;
-let timerInterval = null;
+let chatMessages = [];
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function addChatMessage(msg) {
+  chatMessages.push(msg);
+  renderAllChats();
+}
+
+function renderAllChats() {
+  renderChat();
+  renderHostChat();
+  renderWaitingChat();
+}
 
 socket.on('connect', () => {
   mySocketId = socket.id;
@@ -15,6 +32,15 @@ socket.on('need-name', (need) => {
   if (need) {
     document.getElementById('nameSetup').style.display = 'block';
   }
+});
+
+socket.on('chatHistory', (history) => {
+  chatMessages = history;
+  renderAllChats();
+});
+
+socket.on('chatUpdate', (msg) => {
+  addChatMessage(msg);
 });
 
 socket.on('kicked', () => {
@@ -58,14 +84,6 @@ socket.on('game-state', (state) => {
     document.getElementById('gameArea').style.display = 'block';
     document.getElementById('waitingMessage').style.display = 'none';
     renderGame();
-  }
-});
-
-socket.on('chat-message', (msg) => {
-  if (gameState) {
-    renderChat();
-    renderHostChat();
-    renderWaitingChat();
   }
 });
 
@@ -238,37 +256,33 @@ function renderScoreboard() {
 }
 
 function renderChat() {
-  const chatMessages = document.getElementById('chatMessages');
-  if (!chatMessages || !gameState || !gameState.messages) return;
+  const container = document.getElementById('chatMessages');
+  if (!container) return;
   
-  chatMessages.innerHTML = gameState.messages.map(msg => {
-    const isMe = msg.socketId === mySocketId;
-    return `<div class="chat-msg"><strong>${msg.name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
-  }).join('');
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  container.innerHTML = chatMessages.map(msg => 
+    `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
+  ).join('');
+  container.scrollTop = container.scrollHeight;
 }
 
 function renderHostChat() {
-  const chatMessages = document.getElementById('hostChatMessages');
-  if (!chatMessages || !gameState || !gameState.messages) return;
+  const container = document.getElementById('hostChatMessages');
+  if (!container) return;
   
-  chatMessages.innerHTML = gameState.messages.map(msg => {
-    const isMe = msg.socketId === mySocketId;
-    return `<div class="chat-msg"><strong>${msg.name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
-  }).join('');
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  container.innerHTML = chatMessages.map(msg => 
+    `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
+  ).join('');
+  container.scrollTop = container.scrollHeight;
 }
 
 function renderWaitingChat() {
-  const chatMessages = document.getElementById('waitingChatMessages');
-  if (!chatMessages || !gameState || !gameState.messages) return;
+  const container = document.getElementById('waitingChatMessages');
+  if (!container) return;
   
-  chatMessages.innerHTML = gameState.messages.map(msg => {
-    const isMe = msg.socketId === mySocketId;
-    return `<div class="chat-msg"><strong>${msg.name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
-  }).join('');
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
+  container.innerHTML = chatMessages.map(msg => 
+    `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
+  ).join('');
+  container.scrollTop = container.scrollHeight;
 
 function kickPlayer(targetSocketId) {
   socket.emit('kick-player', { roomId, targetSocketId });
@@ -339,8 +353,8 @@ document.getElementById('wordGuessInput').addEventListener('keypress', (e) => {
 document.getElementById('sendChatBtn').addEventListener('click', () => {
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
-  if (message) {
-    socket.emit('chat-message', { roomId, message });
+  if (message && message.length > 0 && message.length <= 200) {
+    socket.emit('chatMessage', { roomId, message });
     input.value = '';
   }
 });
@@ -366,8 +380,8 @@ document.getElementById('waitingChatInput').addEventListener('keypress', (e) => 
 document.getElementById('hostSendChatBtn').addEventListener('click', () => {
   const input = document.getElementById('hostChatInput');
   const message = input.value.trim();
-  if (message) {
-    socket.emit('chat-message', { roomId, message });
+  if (message && message.length > 0 && message.length <= 200) {
+    socket.emit('chatMessage', { roomId, message });
     input.value = '';
   }
 });
@@ -375,8 +389,8 @@ document.getElementById('hostSendChatBtn').addEventListener('click', () => {
 document.getElementById('waitingSendChatBtn').addEventListener('click', () => {
   const input = document.getElementById('waitingChatInput');
   const message = input.value.trim();
-  if (message) {
-    socket.emit('chat-message', { roomId, message });
+  if (message && message.length > 0 && message.length <= 200) {
+    socket.emit('chatMessage', { roomId, message });
     input.value = '';
   }
 });
