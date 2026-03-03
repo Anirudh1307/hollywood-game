@@ -32,12 +32,14 @@ socket.on('game-state', (state) => {
     document.getElementById('hostSetup').style.display = 'block';
     document.getElementById('waitingArea').style.display = 'none';
     document.getElementById('gameArea').style.display = 'none';
+    renderHostChat();
   } else if (!gameState.gameStarted && !isHost) {
     document.getElementById('hostSetup').style.display = 'none';
     document.getElementById('waitingArea').style.display = 'block';
     document.getElementById('gameArea').style.display = 'none';
     const hostName = gameState.playerNames[gameState.hostSocketId] || 'Host';
     document.getElementById('currentHostName').textContent = hostName;
+    renderWaitingChat();
   } else {
     document.getElementById('hostSetup').style.display = 'none';
     document.getElementById('waitingArea').style.display = 'none';
@@ -197,9 +199,35 @@ function renderChat() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+function renderHostChat() {
+  const chatMessages = document.getElementById('hostChatMessages');
+  if (!chatMessages || !gameState || !gameState.messages) return;
+  
+  chatMessages.innerHTML = gameState.messages.map(msg => {
+    const isMe = msg.socketId === mySocketId;
+    const name = msg.name || 'Unknown';
+    return `<div class="chat-msg"><strong>${name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
+  }).join('');
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function renderWaitingChat() {
+  const chatMessages = document.getElementById('waitingChatMessages');
+  if (!chatMessages || !gameState || !gameState.messages) return;
+  
+  chatMessages.innerHTML = gameState.messages.map(msg => {
+    const isMe = msg.socketId === mySocketId;
+    const name = msg.name || 'Unknown';
+    return `<div class="chat-msg"><strong>${name}${isMe ? ' (You)' : ''}:</strong> ${msg.message}</div>`;
+  }).join('');
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
 socket.on('chat-message', (msg) => {
   if (gameState) {
     renderChat();
+    renderHostChat();
+    renderWaitingChat();
   }
 });
 
@@ -267,12 +295,72 @@ document.getElementById('sendChatBtn').addEventListener('click', () => {
   if (message) {
     socket.emit('chat-message', { roomId, message });
     input.value = '';
+    
+    if (gameState && gameState.messages) {
+      gameState.messages.push({
+        socketId: mySocketId,
+        name: gameState.playerNames[mySocketId] || 'You',
+        message: message,
+        timestamp: Date.now()
+      });
+      renderChat();
+    }
   }
 });
 
 document.getElementById('chatInput').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     document.getElementById('sendChatBtn').click();
+  }
+});
+
+document.getElementById('hostChatInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('hostSendChatBtn').click();
+  }
+});
+
+document.getElementById('waitingChatInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('waitingSendChatBtn').click();
+  }
+});
+
+document.getElementById('hostSendChatBtn').addEventListener('click', () => {
+  const input = document.getElementById('hostChatInput');
+  const message = input.value.trim();
+  if (message) {
+    socket.emit('chat-message', { roomId, message });
+    input.value = '';
+    
+    if (gameState && gameState.messages) {
+      gameState.messages.push({
+        socketId: mySocketId,
+        name: gameState.playerNames[mySocketId] || 'You',
+        message: message,
+        timestamp: Date.now()
+      });
+      renderHostChat();
+    }
+  }
+});
+
+document.getElementById('waitingSendChatBtn').addEventListener('click', () => {
+  const input = document.getElementById('waitingChatInput');
+  const message = input.value.trim();
+  if (message) {
+    socket.emit('chat-message', { roomId, message });
+    input.value = '';
+    
+    if (gameState && gameState.messages) {
+      gameState.messages.push({
+        socketId: mySocketId,
+        name: gameState.playerNames[mySocketId] || 'You',
+        message: message,
+        timestamp: Date.now()
+      });
+      renderWaitingChat();
+    }
   }
 });
 

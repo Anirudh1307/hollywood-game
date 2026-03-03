@@ -26,10 +26,28 @@
       <input type="text" id="clue2" placeholder="Clue 2 (optional)">
       <input type="text" id="clue3" placeholder="Clue 3 (optional)">
       <button id="startGameBtn" class="btn-primary">Start Game</button>
+      
+      <div class="chat-container" style="margin-top: 20px;">
+        <h4>Chat</h4>
+        <div id="hostChatMessages" class="chat-messages"></div>
+        <div class="chat-input">
+          <input type="text" id="hostChatInput" placeholder="Type a message...">
+          <button id="hostSendChatBtn" class="btn-secondary">Send</button>
+        </div>
+      </div>
     </div>
 
     <div id="waitingArea" style="display: none;">
-      <h3>Waiting for <span id="currentHostName"></span> to start the game...</h3>
+      <h3>Waiting for <span id="currentHostName"></span> to set the word...</h3>
+      
+      <div class="chat-container">
+        <h4>Chat</h4>
+        <div id="waitingChatMessages" class="chat-messages"></div>
+        <div class="chat-input">
+          <input type="text" id="waitingChatInput" placeholder="Type a message...">
+          <button id="waitingSendChatBtn" class="btn-secondary">Send</button>
+        </div>
+      </div>
     </div>
 
     <div id="gameArea" style="display: none;">
