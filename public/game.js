@@ -46,7 +46,7 @@ socket.on('chatUpdate', (msg) => {
 socket.on('hostSecretWord', (word) => {
   if (gameState) {
     gameState.hostSecretWord = word;
-    renderHostView();
+    renderHostSecretDisplay();
   }
 });
 
@@ -114,6 +114,7 @@ function renderGame() {
   renderScoreboard();
   renderTurnIndicator();
   renderHostView();
+  renderHostSecretDisplay();
   renderTimer();
   renderChat();
 }
@@ -163,6 +164,21 @@ function renderHostView() {
   }
   
   renderHostRoundLog();
+}
+
+function renderHostSecretDisplay() {
+  const hostContainer = document.getElementById('hostSecretContainer');
+  if (!hostContainer) return;
+  
+  const isHost = gameState.hostSocketId === mySocketId;
+  const isRoundActive = gameState.roomState === 'round_active';
+  
+  if (isHost && isRoundActive && gameState.hostSecretWord) {
+    hostContainer.style.display = 'block';
+    document.getElementById('hostSecretWordDisplay').textContent = gameState.hostSecretWord;
+  } else {
+    hostContainer.style.display = 'none';
+  }
 }
 
 function renderTimer() {
@@ -292,7 +308,7 @@ function renderGameOver() {
         <div class="overlay-content">
           <h2>🎉 CORRECT! 🎉</h2>
           <p>${guesserName} guessed the word!</p>
-          <p class="word-reveal">${gameState.word}</p>
+          <p class="word-reveal">${gameState.resultWord || gameState.word}</p>
           <p>Next round starting...</p>
         </div>
       `;
@@ -301,7 +317,7 @@ function renderGameOver() {
         <div class="overlay-content">
           <h2>💀 ROUND FAILED 💀</h2>
           <p>The word was:</p>
-          <p class="word-reveal">${gameState.word}</p>
+          <p class="word-reveal">${gameState.resultWord || gameState.word}</p>
           <p>Next round starting...</p>
         </div>
       `;
