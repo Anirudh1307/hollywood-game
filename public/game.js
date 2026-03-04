@@ -28,7 +28,13 @@ function renderAllChats() {
 
 socket.on('spectatorMode', (spectator) => {
   isSpectator = spectator;
+  
+  // Clear any existing spectator message
+  const existingMsg = document.getElementById('spectatorWaitingMessage');
+  if (existingMsg) existingMsg.remove();
+  
   if (spectator) {
+    document.getElementById('nameSetup').style.display = 'none';
     document.getElementById('hostSetup').style.display = 'none';
     document.getElementById('waitingArea').style.display = 'block';
     document.getElementById('gameArea').style.display = 'none';
@@ -41,7 +47,7 @@ socket.on('spectatorMode', (spectator) => {
     waitingDiv.innerHTML = '<h3>⏳ Waiting for current round to finish</h3><p>You will join the next round automatically.</p>';
     
     const waitingArea = document.getElementById('waitingArea');
-    if (waitingArea && !document.getElementById('spectatorWaitingMessage')) {
+    if (waitingArea) {
       waitingArea.insertBefore(waitingDiv, waitingArea.firstChild);
     }
     
@@ -57,32 +63,16 @@ function showBonusAnimation(playerId, points) {
   const scoreboard = document.getElementById('scoreboard');
   if (!scoreboard || !gameState) return;
   
-  const playerRows = scoreboard.querySelectorAll('.player-row');
-  let targetRow = null;
+  // Find player in sorted list
+  const playerIndex = gameState.sortedPlayers.findIndex(p => p.socketId === playerId);
+  if (playerIndex === -1) return;
   
-  // Find the correct player row by matching socketId
-  for (let i = 0; i < gameState.sortedPlayers.length; i++) {
-    const player = gameState.sortedPlayers[i];
-    if (player.socketId === playerId && playerRows[i + 1]) { // +1 because first row is header
-      targetRow = playerRows[i + 1];
-      break;
-    }
-  }
+  // Get all player rows (excluding header)
+  const allRows = scoreboard.querySelectorAll('div');
+  const playerRows = Array.from(allRows).filter(row => row.classList.contains('player-row'));
   
-  if (!targetRow) {
-    // Fallback: find by player name in the row text
-    const targetPlayer = gameState.sortedPlayers.find(p => p.socketId === playerId);
-    if (targetPlayer) {
-      for (let row of playerRows) {
-        if (row.textContent.includes(targetPlayer.username)) {
-          targetRow = row;
-          break;
-        }
-      }
-    }
-  }
-  
-  if (!targetRow) return;
+  if (playerIndex >= playerRows.length) return;
+  const targetRow = playerRows[playerIndex];
   
   const popup = document.createElement('div');
   popup.className = 'bonusPopup';
@@ -91,6 +81,10 @@ function showBonusAnimation(playerId, points) {
   popup.style.left = '10px';
   popup.style.top = (targetRow.offsetTop + 5) + 'px';
   popup.style.zIndex = '1001';
+  popup.style.color = '#00ff66';
+  popup.style.fontSize = '14px';
+  popup.style.fontWeight = 'bold';
+  popup.style.pointerEvents = 'none';
   
   scoreboard.appendChild(popup);
   
@@ -169,7 +163,10 @@ socket.on('game-state', (state) => {
     spectatorMsg.remove();
   }
   
-  document.getElementById('nameSetup').style.display = 'none';
+  // Only hide name setup if not spectator
+  if (!isSpectator) {
+    document.getElementById('nameSetup').style.display = 'none';
+  }
   
   const isHost = gameState.hostSocketId === mySocketId;
   
@@ -178,7 +175,7 @@ socket.on('game-state', (state) => {
   }
   wasHost = isHost;
   
-  // Handle spectator mode
+  // Handle spectator mode first
   if (isSpectator) {
     document.getElementById('hostSetup').style.display = 'none';
     document.getElementById('waitingArea').style.display = 'block';

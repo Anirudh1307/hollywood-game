@@ -301,14 +301,17 @@ io.on('connection', (socket) => {
       room.correctLetters.push(upperLetter);
       room.stats[socket.id].correctLetters++;
       
+      // Check unrevealed count BEFORE revealing the letter
+      let unrevealedBeforeReveal = 0;
+      for (let i = 0; i < room.word.length; i++) {
+        if (/[A-Z0-9]/.test(room.word[i]) && room.revealed[i] === '_') {
+          unrevealedBeforeReveal++;
+        }
+      }
+      
       let points = 2;
       if (guessTime <= 20) points += 3;
-      
-      let unrevealed = 0;
-      for (let i = 0; i < room.word.length; i++) {
-        if (/[A-Z0-9]/.test(room.word[i]) && room.revealed[i] === '_') unrevealed++;
-      }
-      if (unrevealed === 1) points += 2;
+      if (unrevealedBeforeReveal === 1) points += 2; // Final letter bonus
       
       room.scores[socket.id] = (room.scores[socket.id] || 0) + points;
       
@@ -693,10 +696,12 @@ io.on('connection', (socket) => {
     for (const roomId in rooms) {
       const room = rooms[roomId];
       const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
+      const waitingIndex = room.waitingPlayers.findIndex(p => p.socketId === socket.id);
       
       if (playerIndex > -1) {
         room.players.splice(playerIndex, 1);
         delete room.scores[socket.id];
+        delete room.stats[socket.id];
         
         if (room.players.length === 0) {
           clearTimers(room);
@@ -730,17 +735,16 @@ io.on('connection', (socket) => {
             room.clues = [];
             room.revealed = [];
             room.gameOver = false;
-          } else {
+          } else if (room.roomState === 'waiting_for_players') {
             room.roomState = 'waiting_for_host_input';
-            room.word = '';
-            room.clues = [];
-            room.revealed = [];
-            room.gameOver = false;
-            room.turnIndex = null;
           }
           
           broadcastRoomState(roomId);
         }
+      } else if (waitingIndex > -1) {
+        room.waitingPlayers.splice(waitingIndex, 1);
+        delete room.scores[socket.id];
+        delete room.stats[socket.id];
       }
     }
   });
