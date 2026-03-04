@@ -335,6 +335,7 @@ h1 {
   border-radius: 10px;
   margin-bottom: 20px;
   text-align: left;
+  position: relative;
 }
 
 .scoreboard h4 {
