@@ -3,6 +3,8 @@ const roomId = window.location.pathname.split('/')[2];
 let gameState = null;
 let mySocketId = null;
 let chatMessages = [];
+let wasHost = false;
+let lastRendered = {};
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -46,7 +48,10 @@ socket.on('chatUpdate', (msg) => {
 socket.on('hostSecretWord', (word) => {
   if (gameState) {
     gameState.hostSecretWord = word;
-    renderHostSecretDisplay();
+    const el = document.getElementById('hostSecretWordDisplay');
+    if (el) el.textContent = word;
+    const el2 = document.getElementById('hostWordDisplay');
+    if (el2) el2.textContent = word;
   }
 });
 
@@ -79,6 +84,11 @@ socket.on('game-state', (state) => {
   document.getElementById('nameSetup').style.display = 'none';
   
   const isHost = gameState.hostSocketId === mySocketId;
+  
+  if (isHost && !wasHost) {
+    resetHostForm();
+  }
+  wasHost = isHost;
   
   if (gameState.roomState === 'waiting_for_players') {
     document.getElementById('hostSetup').style.display = 'none';
@@ -115,14 +125,14 @@ socket.on('game-state', (state) => {
 
 function renderGame() {
   if (!gameState) return;
-  renderHollywood();
-  renderWord();
+  renderHollywoodLives();
+  renderRevealedWord();
   renderClues();
   renderKeypad();
   renderHistory();
   renderGameOver();
   renderScoreboard();
-  renderTurnIndicator();
+  renderTurnInfo();
   renderHostView();
   renderHostSecretDisplay();
   renderTimer();
@@ -182,10 +192,14 @@ function renderHostSecretDisplay() {
   
   const isHost = gameState.hostSocketId === mySocketId;
   const isRoundActive = gameState.roomState === 'round_active';
+  const shouldShow = isHost && isRoundActive && gameState.hostSecretWord;
   
-  if (isHost && isRoundActive && gameState.hostSecretWord) {
+  if (shouldShow) {
     hostContainer.style.display = 'block';
-    document.getElementById('hostSecretWordDisplay').textContent = gameState.hostSecretWord;
+    const el = document.getElementById('hostSecretWordDisplay');
+    if (el && el.textContent !== gameState.hostSecretWord) {
+      el.textContent = gameState.hostSecretWord;
+    }
   } else {
     hostContainer.style.display = 'none';
   }
@@ -202,13 +216,17 @@ function renderTimer() {
   }
 }
 
-function renderTurnIndicator() {
+function renderTurnInfo() {
   const indicator = document.getElementById('turnIndicator');
   if (!indicator) return;
   
   const isHost = gameState.hostSocketId === mySocketId;
   const isMyTurn = gameState.turnSocketId === mySocketId;
   const currentTurnName = gameState.currentTurnPlayerName || 'Unknown';
+  const key = `${isHost}-${isMyTurn}-${currentTurnName}`;
+  
+  if (lastRendered.turnInfo === key) return;
+  lastRendered.turnInfo = key;
   
   if (isHost) {
     indicator.innerHTML = `<div class="turn-msg host-msg">You are the host - Current Turn: ${escapeHtml(currentTurnName)}</div>`;
@@ -219,9 +237,14 @@ function renderTurnIndicator() {
   }
 }
 
-function renderHollywood() {
-  const hollywood = 'HOLLYWOOD';
+function renderHollywoodLives() {
   const display = document.getElementById('hollywoodDisplay');
+  if (!display) return;
+  
+  if (lastRendered.hollywoodIndex === gameState.hollywoodIndex) return;
+  lastRendered.hollywoodIndex = gameState.hollywoodIndex;
+  
+  const hollywood = 'HOLLYWOOD';
   display.innerHTML = '';
   
   for (let i = 0; i < hollywood.length; i++) {
@@ -235,8 +258,14 @@ function renderHollywood() {
   }
 }
 
-function renderWord() {
+function renderRevealedWord() {
   const display = document.getElementById('wordDisplay');
+  if (!display) return;
+  
+  const revealedStr = gameState.revealed.join('');
+  if (lastRendered.revealed === revealedStr) return;
+  lastRendered.revealed = revealedStr;
+  
   display.innerHTML = gameState.revealed.map(letter => 
     `<span class="word-letter">${letter}</span>`
   ).join('');
@@ -341,6 +370,10 @@ function renderScoreboard() {
   const scoreboard = document.getElementById('scoreboard');
   if (!scoreboard) return;
   
+  const scoreKey = JSON.stringify(gameState.scores) + gameState.round + gameState.hostIndex;
+  if (lastRendered.scoreboard === scoreKey) return;
+  lastRendered.scoreboard = scoreKey;
+  
   const hostName = gameState.players[gameState.hostIndex]?.username || 'Host';
   let html = `<h4>Round ${gameState.round} - Current Host: ${hostName}</h4>`;
   
@@ -387,6 +420,18 @@ function renderWaitingChat() {
     `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
   ).join('');
   container.scrollTop = container.scrollHeight;
+}
+
+function resetHostForm() {
+  const wordInput = document.getElementById('wordInput');
+  if (wordInput) wordInput.value = '';
+  
+  const clue1 = document.getElementById('clue1');
+  const clue2 = document.getElementById('clue2');
+  const clue3 = document.getElementById('clue3');
+  if (clue1) clue1.value = '';
+  if (clue2) clue2.value = '';
+  if (clue3) clue3.value = '';
 }
 
 function kickPlayer(targetSocketId) {
