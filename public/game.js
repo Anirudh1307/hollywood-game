@@ -29,10 +29,23 @@ function renderAllChats() {
 socket.on('spectatorMode', (spectator) => {
   isSpectator = spectator;
   if (spectator) {
-    const msg = document.createElement('div');
-    msg.style.cssText = 'background:#f39c12;color:white;padding:15px;border-radius:10px;margin:20px 0;text-align:center;font-weight:bold;';
-    msg.textContent = '⏳ Waiting for current round to finish. You will join next round.';
-    document.querySelector('.container').prepend(msg);
+    document.getElementById('hostSetup').style.display = 'none';
+    document.getElementById('waitingArea').style.display = 'block';
+    document.getElementById('gameArea').style.display = 'none';
+    document.getElementById('waitingMessage').style.display = 'none';
+    document.getElementById('hostWaitingText').style.display = 'none';
+    
+    const waitingDiv = document.createElement('div');
+    waitingDiv.id = 'spectatorWaitingMessage';
+    waitingDiv.style.cssText = 'background:#f39c12;color:white;padding:30px;border-radius:15px;margin-bottom:20px;text-align:center;';
+    waitingDiv.innerHTML = '<h3>⏳ Waiting for current round to finish</h3><p>You will join the next round automatically.</p>';
+    
+    const waitingArea = document.getElementById('waitingArea');
+    if (waitingArea && !document.getElementById('spectatorWaitingMessage')) {
+      waitingArea.insertBefore(waitingDiv, waitingArea.firstChild);
+    }
+    
+    renderWaitingChat();
   }
 });
 
@@ -47,11 +60,27 @@ function showBonusAnimation(playerId, points) {
   const playerRows = scoreboard.querySelectorAll('.player-row');
   let targetRow = null;
   
-  gameState.sortedPlayers.forEach((player, idx) => {
-    if (player.socketId === playerId && playerRows[idx + 1]) {
-      targetRow = playerRows[idx + 1];
+  // Find the correct player row by matching socketId
+  for (let i = 0; i < gameState.sortedPlayers.length; i++) {
+    const player = gameState.sortedPlayers[i];
+    if (player.socketId === playerId && playerRows[i + 1]) { // +1 because first row is header
+      targetRow = playerRows[i + 1];
+      break;
     }
-  });
+  }
+  
+  if (!targetRow) {
+    // Fallback: find by player name in the row text
+    const targetPlayer = gameState.sortedPlayers.find(p => p.socketId === playerId);
+    if (targetPlayer) {
+      for (let row of playerRows) {
+        if (row.textContent.includes(targetPlayer.username)) {
+          targetRow = row;
+          break;
+        }
+      }
+    }
+  }
   
   if (!targetRow) return;
   
@@ -59,13 +88,15 @@ function showBonusAnimation(playerId, points) {
   popup.className = 'bonusPopup';
   popup.textContent = `+${points} Bonus`;
   popup.style.position = 'absolute';
-  popup.style.left = targetRow.offsetLeft + 'px';
-  popup.style.top = (targetRow.offsetTop - 10) + 'px';
+  popup.style.left = '10px';
+  popup.style.top = (targetRow.offsetTop + 5) + 'px';
+  popup.style.zIndex = '1001';
   
-  scoreboard.style.position = 'relative';
   scoreboard.appendChild(popup);
   
-  setTimeout(() => popup.remove(), 1000);
+  setTimeout(() => {
+    if (popup.parentNode) popup.remove();
+  }, 1000);
 }
 
 socket.on('statsUpdate', (stats) => {
@@ -131,6 +162,13 @@ socket.on('game-state', (state) => {
   if (!gameState.hostSecretWord) gameState.hostSecretWord = '';
   if (previousResultWord) gameState.resultWord = previousResultWord;
   if (gameState.word && !gameState.resultWord) gameState.resultWord = gameState.word;
+  
+  // Clear spectator message if no longer spectator
+  const spectatorMsg = document.getElementById('spectatorWaitingMessage');
+  if (spectatorMsg && !isSpectator) {
+    spectatorMsg.remove();
+  }
+  
   document.getElementById('nameSetup').style.display = 'none';
   
   const isHost = gameState.hostSocketId === mySocketId;
@@ -139,6 +177,17 @@ socket.on('game-state', (state) => {
     resetHostForm();
   }
   wasHost = isHost;
+  
+  // Handle spectator mode
+  if (isSpectator) {
+    document.getElementById('hostSetup').style.display = 'none';
+    document.getElementById('waitingArea').style.display = 'block';
+    document.getElementById('gameArea').style.display = 'none';
+    document.getElementById('waitingMessage').style.display = 'none';
+    document.getElementById('hostWaitingText').style.display = 'none';
+    renderWaitingChat();
+    return;
+  }
   
   if (gameState.roomState === 'waiting_for_players') {
     document.getElementById('hostSetup').style.display = 'none';

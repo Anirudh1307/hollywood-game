@@ -154,7 +154,7 @@ io.on('connection', (socket) => {
     }
     
     socket.emit('chatHistory', rooms[roomId].chatHistory);
-    socket.emit('need-name', !existingPlayer);
+    socket.emit('need-name', true);
   });
 
   socket.on('set-name', ({ roomId, name }) => {
@@ -174,6 +174,7 @@ io.on('connection', (socket) => {
         room.players.push({ socketId: socket.id, username: name });
         room.scores[socket.id] = 0;
         room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
+        socket.emit('spectatorMode', false);
       }
     }
     
@@ -608,13 +609,15 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     const player = room.players.find(p => p.socketId === socket.id);
-    if (!player) return;
+    const waitingPlayer = room.waitingPlayers.find(p => p.socketId === socket.id);
+    
+    if (!player && !waitingPlayer) return;
 
     const text = String(message).trim();
     if (!text || text.length === 0 || text.length > 200) return;
 
     const chatMsg = {
-      sender: player.username,
+      sender: (player || waitingPlayer).username,
       message: text,
       timestamp: Date.now()
     };
