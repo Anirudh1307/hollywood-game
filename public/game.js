@@ -30,19 +30,29 @@ socket.on('bonusAwarded', (data) => {
 });
 
 function showBonusAnimation(playerId, points) {
+  console.log('Bonus animation triggered for player:', playerId, 'points:', points);
   const scoreboard = document.getElementById('scoreboard');
-  if (!scoreboard || !gameState) return;
+  if (!scoreboard || !gameState) {
+    console.log('No scoreboard or gameState');
+    return;
+  }
   
   // Find player in sorted list
   const playerIndex = gameState.sortedPlayers.findIndex(p => p.socketId === playerId);
+  console.log('Player index in sorted list:', playerIndex);
   if (playerIndex === -1) return;
   
-  // Get all player rows (excluding header)
-  const allRows = scoreboard.querySelectorAll('div');
-  const playerRows = Array.from(allRows).filter(row => row.classList.contains('player-row'));
+  // Get all player rows
+  const playerRows = scoreboard.querySelectorAll('.player-row');
+  console.log('Found player rows:', playerRows.length);
   
-  if (playerIndex >= playerRows.length) return;
+  if (playerIndex >= playerRows.length) {
+    console.log('Player index exceeds available rows');
+    return;
+  }
+  
   const targetRow = playerRows[playerIndex];
+  console.log('Target row found:', targetRow);
   
   const popup = document.createElement('div');
   popup.className = 'bonusPopup';
@@ -52,14 +62,19 @@ function showBonusAnimation(playerId, points) {
   popup.style.top = (targetRow.offsetTop + 5) + 'px';
   popup.style.zIndex = '1001';
   popup.style.color = '#00ff66';
-  popup.style.fontSize = '14px';
+  popup.style.fontSize = '16px';
   popup.style.fontWeight = 'bold';
   popup.style.pointerEvents = 'none';
+  popup.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
   
   scoreboard.appendChild(popup);
+  console.log('Bonus popup added to scoreboard');
   
   setTimeout(() => {
-    if (popup.parentNode) popup.remove();
+    if (popup.parentNode) {
+      popup.remove();
+      console.log('Bonus popup removed');
+    }
   }, 3000);
 }
 
@@ -225,13 +240,14 @@ function renderHostView() {
   const isHost = gameState.hostSocketId === mySocketId;
   const isRoundActive = gameState.roomState === 'round_active';
   
+  const cacheKey = `${gameState.hostSecretWord}-${(gameState.hostRevealed || gameState.revealed).join('')}`;
+  if (lastRendered.hostView === cacheKey) return;
+  lastRendered.hostView = cacheKey;
+  
   if (isHost && isRoundActive && gameState.hostSecretWord) {
     hostPanel.style.display = 'block';
     
-    // Format secret word with spaces: A B C D
     const secretWordFormatted = gameState.hostSecretWord.split('').join(' ');
-    
-    // Format revealed with spaces: A _ _ D
     const revealedFormatted = (gameState.hostRevealed || gameState.revealed).join(' ');
     
     const wordDisplay = document.getElementById('hostWordDisplay');
@@ -262,13 +278,14 @@ function renderHostSecretDisplay() {
   const isRoundActive = gameState.roomState === 'round_active';
   const shouldShow = isHost && isRoundActive && gameState.hostSecretWord;
   
+  const cacheKey = `${gameState.hostSecretWord}-${(gameState.hostRevealed || gameState.revealed).join('')}`;
+  if (lastRendered.hostSecret === cacheKey) return;
+  lastRendered.hostSecret = cacheKey;
+  
   if (shouldShow) {
     hostContainer.style.display = 'block';
     
-    // Format secret word with spaces: A B C D
     const secretWordFormatted = gameState.hostSecretWord.split('').join(' ');
-    
-    // Format revealed with spaces: A _ _ D
     const revealedFormatted = (gameState.hostRevealed || gameState.revealed).join(' ');
     
     hostContainer.innerHTML = `

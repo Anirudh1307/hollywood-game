@@ -578,13 +578,15 @@ h1 {
 .bonusPopup {
   position: absolute;
   color: #00ff66;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: bold;
-  animation: floatUp 1s ease forwards;
+  animation: floatUp 3s ease forwards;
   pointer-events: none;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
 }
 
 @keyframes floatUp {
   0% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(-20px); }
+  80% { opacity: 1; transform: translateY(-15px); }
+  100% { opacity: 0; transform: translateY(-30px); }
 }
