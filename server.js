@@ -68,7 +68,6 @@ function broadcastRoomState(roomId) {
   
   const state = {
     players: room.players,
-    waitingPlayers: room.waitingPlayers,
     sortedPlayers: getSortedPlayers(room),
     hostIndex: room.hostIndex,
     turnIndex: room.turnIndex,
@@ -122,7 +121,6 @@ io.on('connection', (socket) => {
     if (!rooms[roomId]) {
       rooms[roomId] = {
         players: [],
-        waitingPlayers: [],
         masterHostIndex: 0,
         hostIndex: 0,
         turnIndex: null,
@@ -148,11 +146,6 @@ io.on('connection', (socket) => {
       };
     }
     
-    const existingPlayer = rooms[roomId].players.find(p => p.socketId === socket.id);
-    if (!existingPlayer) {
-      rooms[roomId].scores[socket.id] = 0;
-    }
-    
     socket.emit('chatHistory', rooms[roomId].chatHistory);
     socket.emit('need-name', true);
   });
@@ -162,20 +155,11 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     const existingPlayer = room.players.find(p => p.socketId === socket.id);
-    const existingSpectator = room.waitingPlayers.find(p => p.socketId === socket.id);
     
-    if (!existingPlayer && !existingSpectator) {
-      if (room.roomState === 'round_active') {
-        room.waitingPlayers.push({ socketId: socket.id, username: name });
-        room.scores[socket.id] = 0;
-        room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
-        socket.emit('spectatorMode', true);
-      } else {
-        room.players.push({ socketId: socket.id, username: name });
-        room.scores[socket.id] = 0;
-        room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
-        socket.emit('spectatorMode', false);
-      }
+    if (!existingPlayer) {
+      room.players.push({ socketId: socket.id, username: name });
+      room.scores[socket.id] = 0;
+      room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
     }
     
     if (room.players.length < 2) {
@@ -353,9 +337,6 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
-            room.players.push(...room.waitingPlayers);
-            room.waitingPlayers = [];
-            
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
             room.turnIndex = null;
@@ -401,9 +382,6 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
-            room.players.push(...room.waitingPlayers);
-            room.waitingPlayers = [];
-            
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
             room.turnIndex = null;
@@ -510,9 +488,6 @@ io.on('connection', (socket) => {
       
       setTimeout(() => {
         if (rooms[roomId]) {
-          room.players.push(...room.waitingPlayers);
-          room.waitingPlayers = [];
-          
           room.hostIndex = (room.hostIndex + 1) % room.players.length;
           room.round++;
           room.turnIndex = null;
@@ -557,9 +532,6 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
-            room.players.push(...room.waitingPlayers);
-            room.waitingPlayers = [];
-            
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
             room.turnIndex = null;
@@ -612,15 +584,13 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     const player = room.players.find(p => p.socketId === socket.id);
-    const waitingPlayer = room.waitingPlayers.find(p => p.socketId === socket.id);
-    
-    if (!player && !waitingPlayer) return;
+    if (!player) return;
 
     const text = String(message).trim();
     if (!text || text.length === 0 || text.length > 200) return;
 
     const chatMsg = {
-      sender: (player || waitingPlayer).username,
+      sender: player.username,
       message: text,
       timestamp: Date.now()
     };
@@ -696,7 +666,6 @@ io.on('connection', (socket) => {
     for (const roomId in rooms) {
       const room = rooms[roomId];
       const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
-      const waitingIndex = room.waitingPlayers.findIndex(p => p.socketId === socket.id);
       
       if (playerIndex > -1) {
         room.players.splice(playerIndex, 1);
@@ -741,10 +710,6 @@ io.on('connection', (socket) => {
           
           broadcastRoomState(roomId);
         }
-      } else if (waitingIndex > -1) {
-        room.waitingPlayers.splice(waitingIndex, 1);
-        delete room.scores[socket.id];
-        delete room.stats[socket.id];
       }
     }
   });

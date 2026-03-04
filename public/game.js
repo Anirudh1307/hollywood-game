@@ -5,7 +5,6 @@ let mySocketId = null;
 let chatMessages = [];
 let wasHost = false;
 let lastRendered = {};
-let isSpectator = false;
 let statsOpen = false;
 let gameStats = {};
 
@@ -25,35 +24,6 @@ function renderAllChats() {
   renderHostChat();
   renderWaitingChat();
 }
-
-socket.on('spectatorMode', (spectator) => {
-  isSpectator = spectator;
-  
-  // Clear any existing spectator message
-  const existingMsg = document.getElementById('spectatorWaitingMessage');
-  if (existingMsg) existingMsg.remove();
-  
-  if (spectator) {
-    document.getElementById('nameSetup').style.display = 'none';
-    document.getElementById('hostSetup').style.display = 'none';
-    document.getElementById('waitingArea').style.display = 'block';
-    document.getElementById('gameArea').style.display = 'none';
-    document.getElementById('waitingMessage').style.display = 'none';
-    document.getElementById('hostWaitingText').style.display = 'none';
-    
-    const waitingDiv = document.createElement('div');
-    waitingDiv.id = 'spectatorWaitingMessage';
-    waitingDiv.style.cssText = 'background:#f39c12;color:white;padding:30px;border-radius:15px;margin-bottom:20px;text-align:center;';
-    waitingDiv.innerHTML = '<h3>⏳ Waiting for current round to finish</h3><p>You will join the next round automatically.</p>';
-    
-    const waitingArea = document.getElementById('waitingArea');
-    if (waitingArea) {
-      waitingArea.insertBefore(waitingDiv, waitingArea.firstChild);
-    }
-    
-    renderWaitingChat();
-  }
-});
 
 socket.on('bonusAwarded', (data) => {
   showBonusAnimation(data.playerId, data.points);
@@ -157,16 +127,7 @@ socket.on('game-state', (state) => {
   if (previousResultWord) gameState.resultWord = previousResultWord;
   if (gameState.word && !gameState.resultWord) gameState.resultWord = gameState.word;
   
-  // Clear spectator message if no longer spectator
-  const spectatorMsg = document.getElementById('spectatorWaitingMessage');
-  if (spectatorMsg && !isSpectator) {
-    spectatorMsg.remove();
-  }
-  
-  // Only hide name setup if not spectator
-  if (!isSpectator) {
-    document.getElementById('nameSetup').style.display = 'none';
-  }
+  document.getElementById('nameSetup').style.display = 'none';
   
   const isHost = gameState.hostSocketId === mySocketId;
   
@@ -174,17 +135,6 @@ socket.on('game-state', (state) => {
     resetHostForm();
   }
   wasHost = isHost;
-  
-  // Handle spectator mode first
-  if (isSpectator) {
-    document.getElementById('hostSetup').style.display = 'none';
-    document.getElementById('waitingArea').style.display = 'block';
-    document.getElementById('gameArea').style.display = 'none';
-    document.getElementById('waitingMessage').style.display = 'none';
-    document.getElementById('hostWaitingText').style.display = 'none';
-    renderWaitingChat();
-    return;
-  }
   
   if (gameState.roomState === 'waiting_for_players') {
     document.getElementById('hostSetup').style.display = 'none';
@@ -198,7 +148,6 @@ socket.on('game-state', (state) => {
       document.getElementById('hostSetup').style.display = 'block';
       document.getElementById('waitingArea').style.display = 'none';
       document.getElementById('gameArea').style.display = 'none';
-      document.getElementById('hostSecretWord').style.display = 'none';
       renderHostChat();
     } else {
       document.getElementById('hostSetup').style.display = 'none';
