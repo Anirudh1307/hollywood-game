@@ -310,6 +310,11 @@ io.on('connection', (socket) => {
       if (unrevealed === 1) points += 2;
       
       room.scores[socket.id] = (room.scores[socket.id] || 0) + points;
+      
+      if (points > 2) {
+        io.to(roomId).emit('bonusAwarded', { playerId: socket.id, points: points - 2 });
+      }
+      
       room.roundGuesses.push({
         playerName,
         guessType: 'letter',
@@ -476,6 +481,11 @@ io.on('connection', (socket) => {
       let points = 10;
       if (guessTime <= 20) points += 3;
       room.scores[socket.id] = (room.scores[socket.id] || 0) + points;
+      
+      if (points > 10) {
+        io.to(roomId).emit('bonusAwarded', { playerId: socket.id, points: 3 });
+      }
+      
       room.roundGuesses.push({
         playerName,
         guessType: 'word',

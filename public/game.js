@@ -31,10 +31,42 @@ socket.on('spectatorMode', (spectator) => {
   if (spectator) {
     const msg = document.createElement('div');
     msg.style.cssText = 'background:#f39c12;color:white;padding:15px;border-radius:10px;margin:20px 0;text-align:center;font-weight:bold;';
-    msg.textContent = '👁️ You joined as a spectator. You will join the next round.';
+    msg.textContent = '⏳ Waiting for current round to finish. You will join next round.';
     document.querySelector('.container').prepend(msg);
   }
 });
+
+socket.on('bonusAwarded', (data) => {
+  showBonusAnimation(data.playerId, data.points);
+});
+
+function showBonusAnimation(playerId, points) {
+  const scoreboard = document.getElementById('scoreboard');
+  if (!scoreboard || !gameState) return;
+  
+  const playerRows = scoreboard.querySelectorAll('.player-row');
+  let targetRow = null;
+  
+  gameState.sortedPlayers.forEach((player, idx) => {
+    if (player.socketId === playerId && playerRows[idx + 1]) {
+      targetRow = playerRows[idx + 1];
+    }
+  });
+  
+  if (!targetRow) return;
+  
+  const popup = document.createElement('div');
+  popup.className = 'bonusPopup';
+  popup.textContent = `+${points} Bonus`;
+  popup.style.position = 'absolute';
+  popup.style.left = targetRow.offsetLeft + 'px';
+  popup.style.top = (targetRow.offsetTop - 10) + 'px';
+  
+  scoreboard.style.position = 'relative';
+  scoreboard.appendChild(popup);
+  
+  setTimeout(() => popup.remove(), 1000);
+}
 
 socket.on('statsUpdate', (stats) => {
   gameStats = stats;
