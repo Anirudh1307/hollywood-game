@@ -476,7 +476,8 @@ function renderStats() {
   const panel = document.getElementById('statsPanel');
   if (!panel) return;
   
-  let html = '<h3>Player Statistics</h3><table class="stats-table"><thead><tr><th>Player</th><th>Letters</th><th>Words</th><th>Guesses</th><th>Fastest</th></tr></thead><tbody>';
+  let html = '<button id="closeStats" style="position:absolute;top:10px;right:10px;background:#e74c3c;color:white;border:none;padding:8px 15px;border-radius:5px;cursor:pointer;font-weight:bold;">✕ Close</button>';
+  html += '<h3>Player Statistics</h3><table class="stats-table"><thead><tr><th>Player</th><th>Letters</th><th>Words</th><th>Guesses</th><th>Fastest</th></tr></thead><tbody>';
   
   gameState.players.forEach(p => {
     const stats = gameStats[p.socketId] || { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
@@ -486,6 +487,14 @@ function renderStats() {
   
   html += '</tbody></table>';
   panel.innerHTML = html;
+  
+  const closeBtn = document.getElementById('closeStats');
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      statsOpen = false;
+      panel.classList.remove('open');
+    };
+  }
 }
 
 function resetHostForm() {
