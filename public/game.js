@@ -56,21 +56,7 @@ function showBonusAnimation(playerId, points) {
   
   const popup = document.createElement('div');
   popup.className = 'bonusPopup';
-  popup.textContent = `+${points} Bonus`;
-  popup.style.position = 'absolute';
-  popup.style.left = '50%';
-  popup.style.top = (targetRow.offsetTop + targetRow.offsetHeight / 2) + 'px';
-  popup.style.transform = 'translateX(-50%)';
-  popup.style.zIndex = '1001';
-  popup.style.color = '#00ff66';
-  popup.style.fontSize = '18px';
-  popup.style.fontWeight = 'bold';
-  popup.style.pointerEvents = 'none';
-  popup.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
-  popup.style.background = 'rgba(0,0,0,0.7)';
-  popup.style.padding = '8px 12px';
-  popup.style.borderRadius = '6px';
-  popup.style.border = '2px solid #00ff66';
+  popup.textContent = `+${points} Bonus!`;
   
   scoreboard.style.position = 'relative';
   scoreboard.appendChild(popup);
