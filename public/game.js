@@ -58,15 +58,21 @@ function showBonusAnimation(playerId, points) {
   popup.className = 'bonusPopup';
   popup.textContent = `+${points} Bonus`;
   popup.style.position = 'absolute';
-  popup.style.left = '10px';
-  popup.style.top = (targetRow.offsetTop + 5) + 'px';
+  popup.style.left = '50%';
+  popup.style.top = (targetRow.offsetTop + targetRow.offsetHeight / 2) + 'px';
+  popup.style.transform = 'translateX(-50%)';
   popup.style.zIndex = '1001';
   popup.style.color = '#00ff66';
-  popup.style.fontSize = '16px';
+  popup.style.fontSize = '18px';
   popup.style.fontWeight = 'bold';
   popup.style.pointerEvents = 'none';
-  popup.style.textShadow = '1px 1px 2px rgba(0,0,0,0.5)';
+  popup.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+  popup.style.background = 'rgba(0,0,0,0.7)';
+  popup.style.padding = '8px 12px';
+  popup.style.borderRadius = '6px';
+  popup.style.border = '2px solid #00ff66';
   
+  scoreboard.style.position = 'relative';
   scoreboard.appendChild(popup);
   console.log('Bonus popup added to scoreboard');
   
@@ -240,29 +246,8 @@ function renderHostView() {
   const isHost = gameState.hostSocketId === mySocketId;
   const isRoundActive = gameState.roomState === 'round_active';
   
-  const cacheKey = `${gameState.hostSecretWord}-${(gameState.hostRevealed || gameState.revealed).join('')}`;
-  if (lastRendered.hostView === cacheKey) return;
-  lastRendered.hostView = cacheKey;
-  
-  if (isHost && isRoundActive && gameState.hostSecretWord) {
+  if (isHost && isRoundActive) {
     hostPanel.style.display = 'block';
-    
-    const secretWordFormatted = gameState.hostSecretWord.split('').join(' ');
-    const revealedFormatted = (gameState.hostRevealed || gameState.revealed).join(' ');
-    
-    const wordDisplay = document.getElementById('hostWordDisplay');
-    if (wordDisplay) {
-      wordDisplay.innerHTML = `
-        <div style="margin-bottom: 10px;">
-          <span style="color: #666; font-size: 0.9em;">Secret Word: </span>
-          <span style="font-weight: bold; color: #333;">${secretWordFormatted}</span>
-        </div>
-        <div>
-          <span style="color: #666; font-size: 0.9em;">Revealed: </span>
-          <span style="font-weight: bold; color: #667eea;">${revealedFormatted}</span>
-        </div>
-      `;
-    }
   } else {
     hostPanel.style.display = 'none';
   }
@@ -464,7 +449,7 @@ function renderScoreboard() {
   const scoreboard = document.getElementById('scoreboard');
   if (!scoreboard) return;
   
-  const scoreKey = JSON.stringify(gameState.scores) + gameState.round + gameState.hostIndex;
+  const scoreKey = JSON.stringify(gameState.scores) + gameState.round + gameState.hostIndex + gameState.players.length;
   if (lastRendered.scoreboard === scoreKey) return;
   lastRendered.scoreboard = scoreKey;
   

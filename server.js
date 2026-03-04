@@ -165,11 +165,13 @@ io.on('connection', (socket) => {
       room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
     }
     
-    if (room.players.length < 2) {
+    // Allow joining during any state, don't change room state if game is active
+    if (room.players.length < 2 && room.roomState === 'waiting_for_players') {
       room.roomState = 'waiting_for_players';
-    } else if (room.roomState === 'waiting_for_players') {
+    } else if (room.players.length >= 2 && room.roomState === 'waiting_for_players') {
       room.roomState = 'waiting_for_host_input';
     }
+    // If room is in round_active, keep it active - new players can join mid-game
     
     broadcastRoomState(roomId);
   });
