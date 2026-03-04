@@ -95,7 +95,10 @@ function broadcastRoomState(roomId) {
   io.to(roomId).emit('statsUpdate', room.stats);
   
   if (currentHost && room.roomState === 'round_active' && room.word) {
-    io.to(currentHost.socketId).emit('hostSecretWord', room.word);
+    io.to(currentHost.socketId).emit('hostSecretWord', {
+      secretWord: room.word,
+      revealed: room.revealed
+    });
   }
   
   if (currentHost && room.roomState === 'round_active') {

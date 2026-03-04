@@ -60,7 +60,7 @@ function showBonusAnimation(playerId, points) {
   
   setTimeout(() => {
     if (popup.parentNode) popup.remove();
-  }, 1000);
+  }, 3000);
 }
 
 socket.on('statsUpdate', (stats) => {
@@ -90,13 +90,17 @@ socket.on('chatUpdate', (msg) => {
   addChatMessage(msg);
 });
 
-socket.on('hostSecretWord', (word) => {
+socket.on('hostSecretWord', (data) => {
   if (gameState) {
-    gameState.hostSecretWord = word;
-    const el = document.getElementById('hostSecretWordDisplay');
-    if (el) el.textContent = word;
-    const el2 = document.getElementById('hostWordDisplay');
-    if (el2) el2.textContent = word;
+    if (typeof data === 'string') {
+      gameState.hostSecretWord = data;
+      gameState.hostRevealed = gameState.revealed;
+    } else {
+      gameState.hostSecretWord = data.secretWord;
+      gameState.hostRevealed = data.revealed;
+    }
+    renderHostSecretDisplay();
+    renderHostView();
   }
 });
 
@@ -223,7 +227,26 @@ function renderHostView() {
   
   if (isHost && isRoundActive && gameState.hostSecretWord) {
     hostPanel.style.display = 'block';
-    document.getElementById('hostWordDisplay').textContent = gameState.hostSecretWord;
+    
+    // Format secret word with spaces: A B C D
+    const secretWordFormatted = gameState.hostSecretWord.split('').join(' ');
+    
+    // Format revealed with spaces: A _ _ D
+    const revealedFormatted = (gameState.hostRevealed || gameState.revealed).join(' ');
+    
+    const wordDisplay = document.getElementById('hostWordDisplay');
+    if (wordDisplay) {
+      wordDisplay.innerHTML = `
+        <div style="margin-bottom: 10px;">
+          <span style="color: #666; font-size: 0.9em;">Secret Word: </span>
+          <span style="font-weight: bold; color: #333;">${secretWordFormatted}</span>
+        </div>
+        <div>
+          <span style="color: #666; font-size: 0.9em;">Revealed: </span>
+          <span style="font-weight: bold; color: #667eea;">${revealedFormatted}</span>
+        </div>
+      `;
+    }
   } else {
     hostPanel.style.display = 'none';
   }
@@ -241,10 +264,19 @@ function renderHostSecretDisplay() {
   
   if (shouldShow) {
     hostContainer.style.display = 'block';
-    const el = document.getElementById('hostSecretWordDisplay');
-    if (el && el.textContent !== gameState.hostSecretWord) {
-      el.textContent = gameState.hostSecretWord;
-    }
+    
+    // Format secret word with spaces: A B C D
+    const secretWordFormatted = gameState.hostSecretWord.split('').join(' ');
+    
+    // Format revealed with spaces: A _ _ D
+    const revealedFormatted = (gameState.hostRevealed || gameState.revealed).join(' ');
+    
+    hostContainer.innerHTML = `
+      <p style="color: #666; font-size: 0.9em; margin-bottom: 5px;">Secret Word:</p>
+      <p style="font-size: 1.2em; font-weight: bold; color: #333; margin-bottom: 10px;">${secretWordFormatted}</p>
+      <p style="color: #666; font-size: 0.9em; margin-bottom: 5px;">Revealed:</p>
+      <p style="font-size: 1.2em; font-weight: bold; color: #667eea;">${revealedFormatted}</p>
+    `;
   } else {
     hostContainer.style.display = 'none';
   }
