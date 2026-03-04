@@ -611,7 +611,7 @@ document.getElementById('waitingSendChatBtn').addEventListener('click', () => {
   }
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+setTimeout(() => {
   const toggle = document.getElementById('statsToggle');
   const panel = document.getElementById('statsPanel');
   
@@ -622,4 +622,4 @@ document.addEventListener('DOMContentLoaded', () => {
       if (statsOpen && gameState) renderStats();
     });
   }
-});
+}, 100);

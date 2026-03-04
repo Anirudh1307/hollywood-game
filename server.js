@@ -68,7 +68,7 @@ function broadcastRoomState(roomId) {
   
   const state = {
     players: room.players,
-    spectators: room.spectators,
+    waitingPlayers: room.waitingPlayers,
     sortedPlayers: getSortedPlayers(room),
     hostIndex: room.hostIndex,
     turnIndex: room.turnIndex,
@@ -122,7 +122,7 @@ io.on('connection', (socket) => {
     if (!rooms[roomId]) {
       rooms[roomId] = {
         players: [],
-        spectators: [],
+        waitingPlayers: [],
         masterHostIndex: 0,
         hostIndex: 0,
         turnIndex: null,
@@ -162,11 +162,11 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     const existingPlayer = room.players.find(p => p.socketId === socket.id);
-    const existingSpectator = room.spectators.find(p => p.socketId === socket.id);
+    const existingSpectator = room.waitingPlayers.find(p => p.socketId === socket.id);
     
     if (!existingPlayer && !existingSpectator) {
       if (room.roomState === 'round_active') {
-        room.spectators.push({ socketId: socket.id, username: name });
+        room.waitingPlayers.push({ socketId: socket.id, username: name });
         room.scores[socket.id] = 0;
         room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
         socket.emit('spectatorMode', true);
@@ -349,8 +349,8 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
-            room.players.push(...room.spectators);
-            room.spectators = [];
+            room.players.push(...room.waitingPlayers);
+            room.waitingPlayers = [];
             
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
@@ -397,8 +397,8 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
-            room.players.push(...room.spectators);
-            room.spectators = [];
+            room.players.push(...room.waitingPlayers);
+            room.waitingPlayers = [];
             
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
@@ -506,8 +506,8 @@ io.on('connection', (socket) => {
       
       setTimeout(() => {
         if (rooms[roomId]) {
-          room.players.push(...room.spectators);
-          room.spectators = [];
+          room.players.push(...room.waitingPlayers);
+          room.waitingPlayers = [];
           
           room.hostIndex = (room.hostIndex + 1) % room.players.length;
           room.round++;
@@ -553,8 +553,8 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
-            room.players.push(...room.spectators);
-            room.spectators = [];
+            room.players.push(...room.waitingPlayers);
+            room.waitingPlayers = [];
             
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
