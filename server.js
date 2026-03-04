@@ -68,6 +68,7 @@ function broadcastRoomState(roomId) {
   
   const state = {
     players: room.players,
+    spectators: room.spectators,
     sortedPlayers: getSortedPlayers(room),
     hostIndex: room.hostIndex,
     turnIndex: room.turnIndex,
@@ -92,6 +93,7 @@ function broadcastRoomState(roomId) {
   };
   
   io.to(roomId).emit('game-state', state);
+  io.to(roomId).emit('statsUpdate', room.stats);
   
   if (currentHost) {
     io.to(currentHost.socketId).emit('hostSecretWord', room.word);
@@ -120,6 +122,7 @@ io.on('connection', (socket) => {
     if (!rooms[roomId]) {
       rooms[roomId] = {
         players: [],
+        spectators: [],
         masterHostIndex: 0,
         hostIndex: 0,
         turnIndex: null,
@@ -139,7 +142,9 @@ io.on('connection', (socket) => {
         timers: { hostTimer: null, turnTimer: null, countdownInterval: null },
         timerSeconds: 0,
         roundGuesses: [],
-        playersWhoGuessedThisRound: new Set()
+        playersWhoGuessedThisRound: new Set(),
+        stats: {},
+        turnStartTime: null
       };
     }
     
@@ -157,9 +162,19 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     const existingPlayer = room.players.find(p => p.socketId === socket.id);
-    if (!existingPlayer) {
-      room.players.push({ socketId: socket.id, username: name });
-      room.scores[socket.id] = 0;
+    const existingSpectator = room.spectators.find(p => p.socketId === socket.id);
+    
+    if (!existingPlayer && !existingSpectator) {
+      if (room.roomState === 'round_active') {
+        room.spectators.push({ socketId: socket.id, username: name });
+        room.scores[socket.id] = 0;
+        room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
+        socket.emit('spectatorMode', true);
+      } else {
+        room.players.push({ socketId: socket.id, username: name });
+        room.scores[socket.id] = 0;
+        room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
+      }
     }
     
     if (room.players.length < 2) {
@@ -207,6 +222,7 @@ io.on('connection', (socket) => {
     
     room.turnIndex = (room.hostIndex + 1) % room.players.length;
     room.timerSeconds = 120;
+    room.turnStartTime = Date.now();
     
     room.timers.countdownInterval = setInterval(() => {
       room.timerSeconds--;
@@ -273,9 +289,27 @@ io.on('connection', (socket) => {
 
     const playerName = room.players[playerIndex].username;
     room.playersWhoGuessedThisRound.add(socket.id);
+    
+    const guessTime = (Date.now() - room.turnStartTime) / 1000;
+    room.stats[socket.id].totalGuesses++;
+    if (!room.stats[socket.id].fastestGuessTime || guessTime < room.stats[socket.id].fastestGuessTime) {
+      room.stats[socket.id].fastestGuessTime = guessTime;
+    }
 
     if (room.word.includes(upperLetter)) {
       room.correctLetters.push(upperLetter);
+      room.stats[socket.id].correctLetters++;
+      
+      let points = 2;
+      if (guessTime <= 20) points += 3;
+      
+      let unrevealed = 0;
+      for (let i = 0; i < room.word.length; i++) {
+        if (/[A-Z0-9]/.test(room.word[i]) && room.revealed[i] === '_') unrevealed++;
+      }
+      if (unrevealed === 1) points += 2;
+      
+      room.scores[socket.id] = (room.scores[socket.id] || 0) + points;
       room.roundGuesses.push({
         playerName,
         guessType: 'letter',
@@ -302,7 +336,6 @@ io.on('connection', (socket) => {
         room.gameOver = true;
         room.winner = true;
         room.roomState = 'round_ended';
-        room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
         
         const finalWord = room.word;
         console.log('Emitting roundResult with word:', finalWord);
@@ -311,6 +344,9 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
+            room.players.push(...room.spectators);
+            room.spectators = [];
+            
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
             room.turnIndex = null;
@@ -356,6 +392,9 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
+            room.players.push(...room.spectators);
+            room.spectators = [];
+            
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
             room.turnIndex = null;
@@ -381,6 +420,7 @@ io.on('connection', (socket) => {
     clearTimers(room);
     room.turnIndex = getNextTurnIndex(room);
     room.timerSeconds = 120;
+    room.turnStartTime = Date.now();
     
     room.timers.countdownInterval = setInterval(() => {
       room.timerSeconds--;
@@ -423,8 +463,19 @@ io.on('connection', (socket) => {
 
     const playerName = room.players[playerIndex].username;
     room.playersWhoGuessedThisRound.add(socket.id);
+    
+    const guessTime = (Date.now() - room.turnStartTime) / 1000;
+    room.stats[socket.id].totalGuesses++;
+    if (!room.stats[socket.id].fastestGuessTime || guessTime < room.stats[socket.id].fastestGuessTime) {
+      room.stats[socket.id].fastestGuessTime = guessTime;
+    }
 
     if (normalizedGuess === normalizedSecret) {
+      room.stats[socket.id].correctWords++;
+      
+      let points = 10;
+      if (guessTime <= 20) points += 3;
+      room.scores[socket.id] = (room.scores[socket.id] || 0) + points;
       room.roundGuesses.push({
         playerName,
         guessType: 'word',
@@ -437,7 +488,6 @@ io.on('connection', (socket) => {
       room.gameOver = true;
       room.winner = true;
       room.roomState = 'round_ended';
-      room.scores[socket.id] = (room.scores[socket.id] || 0) + 10;
       
       const finalWord = room.word;
       console.log('Emitting roundResult with word:', finalWord);
@@ -446,6 +496,9 @@ io.on('connection', (socket) => {
       
       setTimeout(() => {
         if (rooms[roomId]) {
+          room.players.push(...room.spectators);
+          room.spectators = [];
+          
           room.hostIndex = (room.hostIndex + 1) % room.players.length;
           room.round++;
           room.turnIndex = null;
@@ -490,6 +543,9 @@ io.on('connection', (socket) => {
         
         setTimeout(() => {
           if (rooms[roomId]) {
+            room.players.push(...room.spectators);
+            room.spectators = [];
+            
             room.hostIndex = (room.hostIndex + 1) % room.players.length;
             room.round++;
             room.turnIndex = null;
@@ -515,6 +571,7 @@ io.on('connection', (socket) => {
     clearTimers(room);
     room.turnIndex = getNextTurnIndex(room);
     room.timerSeconds = 120;
+    room.turnStartTime = Date.now();
     
     room.timers.countdownInterval = setInterval(() => {
       room.timerSeconds--;

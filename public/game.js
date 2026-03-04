@@ -5,6 +5,9 @@ let mySocketId = null;
 let chatMessages = [];
 let wasHost = false;
 let lastRendered = {};
+let isSpectator = false;
+let statsOpen = false;
+let gameStats = {};
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -22,6 +25,21 @@ function renderAllChats() {
   renderHostChat();
   renderWaitingChat();
 }
+
+socket.on('spectatorMode', (spectator) => {
+  isSpectator = spectator;
+  if (spectator) {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'background:#f39c12;color:white;padding:15px;border-radius:10px;margin:20px 0;text-align:center;font-weight:bold;';
+    msg.textContent = '👁️ You joined as a spectator. You will join the next round.';
+    document.querySelector('.container').prepend(msg);
+  }
+});
+
+socket.on('statsUpdate', (stats) => {
+  gameStats = stats;
+  if (statsOpen) renderStats();
+});
 
 socket.on('connect', () => {
   mySocketId = socket.id;
@@ -422,6 +440,22 @@ function renderWaitingChat() {
   container.scrollTop = container.scrollHeight;
 }
 
+function renderStats() {
+  const panel = document.getElementById('statsPanel');
+  if (!panel) return;
+  
+  let html = '<h3>Player Statistics</h3><table class="stats-table"><thead><tr><th>Player</th><th>Letters</th><th>Words</th><th>Guesses</th><th>Fastest</th></tr></thead><tbody>';
+  
+  gameState.players.forEach(p => {
+    const stats = gameStats[p.socketId] || { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
+    const fastest = stats.fastestGuessTime ? stats.fastestGuessTime.toFixed(1) + 's' : '-';
+    html += `<tr><td>${escapeHtml(p.username)}</td><td>${stats.correctLetters}</td><td>${stats.correctWords}</td><td>${stats.totalGuesses}</td><td>${fastest}</td></tr>`;
+  });
+  
+  html += '</tbody></table>';
+  panel.innerHTML = html;
+}
+
 function resetHostForm() {
   const wordInput = document.getElementById('wordInput');
   if (wordInput) wordInput.value = '';
@@ -542,5 +576,18 @@ document.getElementById('waitingSendChatBtn').addEventListener('click', () => {
   if (message && message.length > 0 && message.length <= 200) {
     socket.emit('chatMessage', { roomId, message });
     input.value = '';
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const toggle = document.getElementById('statsToggle');
+  const panel = document.getElementById('statsPanel');
+  
+  if (toggle && panel) {
+    toggle.addEventListener('click', () => {
+      statsOpen = !statsOpen;
+      panel.classList.toggle('open');
+      if (statsOpen && gameState) renderStats();
+    });
   }
 });

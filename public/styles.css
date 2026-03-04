@@ -507,3 +507,69 @@ h1 {
   font-size: 0.95em;
   text-align: left;
 }
+
+.stats-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 1em;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  z-index: 999;
+}
+
+.stats-toggle:hover {
+  background: #5568d3;
+}
+
+.stats-panel {
+  position: fixed;
+  top: 0;
+  right: -320px;
+  width: 320px;
+  height: 100vh;
+  background: white;
+  box-shadow: -4px 0 12px rgba(0,0,0,0.2);
+  transition: right 0.3s ease;
+  z-index: 1000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.stats-panel.open {
+  right: 0;
+}
+
+.stats-panel h3 {
+  color: #667eea;
+  margin-bottom: 15px;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stats-table th {
+  background: #667eea;
+  color: white;
+  padding: 8px;
+  text-align: left;
+  font-size: 0.85em;
+}
+
+.stats-table td {
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  font-size: 0.9em;
+}
+
+.stats-table tr:hover {
+  background: #f8f9fa;
+}
