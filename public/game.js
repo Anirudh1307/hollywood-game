@@ -14,6 +14,14 @@ let lastState = {
   currentTurn: '',
   timeLeft: null
 };
+let lastRenderedState = {
+  revealed: '',
+  turn: '',
+  timer: null,
+  secretWord: ''
+};
+let pendingHostUIState = null;
+let hostUIRenderQueued = false;
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -101,8 +109,7 @@ socket.on('hostSecretWord', (data) => {
       gameState.hostSecretWord = data.secretWord;
       gameState.hostRevealed = data.revealed;
     }
-    renderHostSecretDisplay();
-    renderHostView();
+    queueHostUIRender({ secretWord: gameState.hostSecretWord || '' });
   }
 });
 
@@ -183,19 +190,81 @@ socket.on('game-state', (state) => {
     }
   } else {
     renderHollywoodLives();
-    renderRevealedWord();
     renderClues();
     renderKeypad();
     renderHistory();
     renderGameOver();
     renderScoreboard();
-    renderTurnInfo();
-    renderHostView();
-    renderHostSecretDisplay();
-    renderTimer();
     renderChat();
+
+    if (isHost) {
+      queueHostUIRender({
+        revealed: (gameState.revealed || []).join(''),
+        turn: gameState.currentTurnPlayerName || '',
+        timer: gameState.roomState === 'round_active' ? gameState.timerSeconds : null,
+        secretWord: gameState.hostSecretWord || ''
+      });
+    } else {
+      renderRevealedWord();
+      renderTurnInfo();
+      renderTimer();
+      renderHostView();
+      renderHostSecretDisplay();
+    }
   }
 });
+
+function queueHostUIRender(partialState = {}) {
+  if (!gameState || gameState.hostSocketId !== mySocketId) return;
+
+  pendingHostUIState = { ...(pendingHostUIState || {}), ...partialState };
+  if (hostUIRenderQueued) return;
+
+  hostUIRenderQueued = true;
+  requestAnimationFrame(() => {
+    hostUIRenderQueued = false;
+    const statePatch = pendingHostUIState || {};
+    pendingHostUIState = null;
+    renderHostUI(statePatch);
+  });
+}
+
+function renderHostUI(statePatch = {}) {
+  if (!gameState || gameState.hostSocketId !== mySocketId) return;
+
+  const nextRevealed = statePatch.revealed !== undefined
+    ? statePatch.revealed
+    : (gameState.revealed || []).join('');
+  if (nextRevealed !== lastRenderedState.revealed) {
+    lastRenderedState.revealed = nextRevealed;
+    renderRevealedWord();
+  }
+
+  const nextTurn = statePatch.turn !== undefined
+    ? statePatch.turn
+    : (gameState.currentTurnPlayerName || '');
+  if (nextTurn !== lastRenderedState.turn) {
+    lastRenderedState.turn = nextTurn;
+    renderTurnInfo();
+  }
+
+  const nextTimer = statePatch.timer !== undefined
+    ? statePatch.timer
+    : (gameState.roomState === 'round_active' ? gameState.timerSeconds : null);
+  if (nextTimer !== lastRenderedState.timer) {
+    lastRenderedState.timer = nextTimer;
+    renderTimer();
+  }
+
+  const nextSecretWord = statePatch.secretWord !== undefined
+    ? statePatch.secretWord
+    : (gameState.hostSecretWord || '');
+  if (nextSecretWord !== lastRenderedState.secretWord) {
+    lastRenderedState.secretWord = nextSecretWord;
+    renderHostView();
+    renderHostSecretDisplay();
+  }
+}
 
 function setTurnIndicatorState(message, stateClass) {
   const indicator = document.getElementById('turnIndicator');
