@@ -24,6 +24,72 @@ function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
+function sanitizeName(name) {
+  return String(name || '').trim().substring(0, 20);
+}
+
+function createRoomState() {
+  return {
+    players: [],
+    masterHostIndex: 0,
+    hostIndex: 0,
+    turnIndex: null,
+    roomState: 'waiting_for_players',
+    word: '',
+    clues: [],
+    revealed: [],
+    correctLetters: [],
+    wrongLetters: [],
+    wrongWords: [],
+    hollywoodIndex: 0,
+    gameOver: false,
+    winner: false,
+    scores: {},
+    round: 1,
+    chatHistory: [],
+    timers: { hostTimer: null, turnTimer: null, countdownInterval: null },
+    timerSeconds: 0,
+    roundGuesses: [],
+    playersWhoGuessedThisRound: new Set(),
+    stats: {},
+    turnStartTime: null
+  };
+}
+
+function getOrCreateRoom(roomId) {
+  if (!rooms[roomId]) {
+    rooms[roomId] = createRoomState();
+  }
+  return rooms[roomId];
+}
+
+function addPlayerToRoom(room, socketId, name) {
+  const existingPlayer = room.players.find((p) => p.socketId === socketId);
+  if (existingPlayer) return false;
+
+  room.players.push({ socketId, username: name });
+  room.scores[socketId] = room.scores[socketId] || 0;
+  room.stats[socketId] = room.stats[socketId] || {
+    correctLetters: 0,
+    correctWords: 0,
+    totalGuesses: 0,
+    fastestGuessTime: null
+  };
+  return true;
+}
+
+function syncWaitingRoomState(room) {
+  if (room.players.length < 2) {
+    room.roomState = 'waiting_for_players';
+    room.turnIndex = null;
+    return;
+  }
+
+  if (room.roomState === 'waiting_for_players') {
+    room.roomState = 'waiting_for_host_input';
+  }
+}
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -120,60 +186,37 @@ function clearTimers(room) {
 io.on('connection', (socket) => {
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
-    
-    if (!rooms[roomId]) {
-      rooms[roomId] = {
-        players: [],
-        masterHostIndex: 0,
-        hostIndex: 0,
-        turnIndex: null,
-        roomState: 'waiting_for_host_input',
-        word: '',
-        clues: [],
-        revealed: [],
-        correctLetters: [],
-        wrongLetters: [],
-        wrongWords: [],
-        hollywoodIndex: 0,
-        gameOver: false,
-        winner: false,
-        scores: {},
-        round: 1,
-        chatHistory: [],
-        timers: { hostTimer: null, turnTimer: null, countdownInterval: null },
-        timerSeconds: 0,
-        roundGuesses: [],
-        playersWhoGuessedThisRound: new Set(),
-        stats: {},
-        turnStartTime: null
-      };
-    }
-    
-    socket.emit('chatHistory', rooms[roomId].chatHistory);
+    const room = getOrCreateRoom(roomId);
+    socket.emit('chatHistory', room.chatHistory);
     socket.emit('need-name', true);
   });
 
+  socket.on('joinRoom', ({ roomId, username }) => {
+    const normalizedRoomId = String(roomId || '').trim().toUpperCase();
+    const name = sanitizeName(username);
+    if (!normalizedRoomId || !name) return;
+
+    socket.join(normalizedRoomId);
+    const room = getOrCreateRoom(normalizedRoomId);
+    addPlayerToRoom(room, socket.id, name);
+    syncWaitingRoomState(room);
+
+    socket.emit('chatHistory', room.chatHistory);
+    broadcastRoomState(normalizedRoomId);
+  });
+
   socket.on('set-name', ({ roomId, name }) => {
-    const room = rooms[roomId];
+    const normalizedRoomId = String(roomId || '').trim().toUpperCase();
+    const username = sanitizeName(name);
+    if (!normalizedRoomId || !username) return;
+
+    socket.join(normalizedRoomId);
+    const room = getOrCreateRoom(normalizedRoomId);
     if (!room) return;
 
-    const existingPlayer = room.players.find(p => p.socketId === socket.id);
-    
-    if (!existingPlayer) {
-      room.players.push({ socketId: socket.id, username: name });
-      room.scores[socket.id] = 0;
-      room.stats[socket.id] = { correctLetters: 0, correctWords: 0, totalGuesses: 0, fastestGuessTime: null };
-    }
-    
-    // Allow joining during any state, don't change room state if game is active
-    if (room.players.length < 2 && room.roomState === 'waiting_for_players') {
-      room.roomState = 'waiting_for_players';
-    } else if (room.players.length >= 2 && room.roomState === 'waiting_for_players') {
-      room.roomState = 'waiting_for_host_input';
-    }
-    // If room is in round_active, keep it active - new players can join mid-game
-    
-    broadcastRoomState(roomId);
+    addPlayerToRoom(room, socket.id, username);
+    syncWaitingRoomState(room);
+    broadcastRoomState(normalizedRoomId);
   });
 
   socket.on('start-game', ({ roomId, word, clues }) => {
@@ -470,7 +513,7 @@ io.on('connection', (socket) => {
       room.scores[socket.id] = (room.scores[socket.id] || 0) + points;
       
       if (points > 10) {
-        io.to(roomId).emit('bonusAwarded', { playerId: socket.id, points: 3 });
+        io.to(roomId).emit('bonusAwarded', { playerId: socket.id, points: points - 10 });
       }
       
       room.roundGuesses.push({

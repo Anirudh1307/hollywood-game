@@ -349,6 +349,7 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
 }
 
 .kick-btn {
@@ -576,17 +577,17 @@ h1 {
 }
 
 .bonusPopup {
-  position: absolute;
+  position: fixed;
   color: #00ff66;
-  font-size: 16px;
+  font-size: 12px;
   font-weight: bold;
-  animation: floatUp 3s ease forwards;
+  animation: bonusFloat 3s ease forwards;
   pointer-events: none;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  z-index: 1200;
 }
 
-@keyframes floatUp {
+@keyframes bonusFloat {
   0% { opacity: 1; transform: translateY(0); }
-  80% { opacity: 1; transform: translateY(-15px); }
-  100% { opacity: 0; transform: translateY(-30px); }
+  100% { opacity: 0; transform: translateY(-40px); }
 }

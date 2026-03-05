@@ -7,6 +7,8 @@ let wasHost = false;
 let lastRendered = {};
 let statsOpen = false;
 let gameStats = {};
+let hasJoinedRoom = false;
+let keypadInitialized = false;
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -30,44 +32,33 @@ socket.on('bonusAwarded', (data) => {
 });
 
 function showBonusAnimation(playerId, points) {
-  console.log('Bonus animation triggered for player:', playerId, 'points:', points);
-  const scoreboard = document.getElementById('scoreboard');
-  if (!scoreboard || !gameState) {
-    console.log('No scoreboard or gameState');
-    return;
-  }
-  
-  // Find player in sorted list
-  const playerIndex = gameState.sortedPlayers.findIndex(p => p.socketId === playerId);
-  console.log('Player index in sorted list:', playerIndex);
-  if (playerIndex === -1) return;
-  
-  // Get all player rows
-  const playerRows = scoreboard.querySelectorAll('.player-row');
-  console.log('Found player rows:', playerRows.length);
-  
-  if (playerIndex >= playerRows.length) {
-    console.log('Player index exceeds available rows');
-    return;
-  }
-  
-  const targetRow = playerRows[playerIndex];
-  console.log('Target row found:', targetRow);
-  
-  const popup = document.createElement('div');
-  popup.className = 'bonusPopup';
-  popup.textContent = `+${points} Bonus!`;
-  
-  scoreboard.style.position = 'relative';
-  scoreboard.appendChild(popup);
-  console.log('Bonus popup added to scoreboard');
-  
-  setTimeout(() => {
-    if (popup.parentNode) {
-      popup.remove();
-      console.log('Bonus popup removed');
+  let attempts = 0;
+  const maxAttempts = 8;
+
+  const tryShowPopup = () => {
+    const row = document.querySelector(`.player-row[data-player-id="${playerId}"]`);
+    if (!row) {
+      attempts++;
+      if (attempts < maxAttempts) {
+        setTimeout(tryShowPopup, 60);
+      }
+      return;
     }
-  }, 3000);
+
+    const rect = row.getBoundingClientRect();
+    const popup = document.createElement('div');
+    popup.className = 'bonusPopup';
+    popup.textContent = `+${points} Bonus`;
+    popup.style.left = `${rect.left + 12}px`;
+    popup.style.top = `${rect.top + 4}px`;
+    document.body.appendChild(popup);
+
+    setTimeout(() => {
+      if (popup.parentNode) popup.remove();
+    }, 3000);
+  };
+
+  tryShowPopup();
 }
 
 socket.on('statsUpdate', (stats) => {
@@ -80,7 +71,6 @@ socket.on('connect', () => {
 });
 
 document.getElementById('roomId').textContent = roomId;
-socket.emit('join-room', roomId);
 
 socket.on('need-name', (need) => {
   if (need) {
@@ -141,40 +131,52 @@ socket.on('game-state', (state) => {
   document.getElementById('nameSetup').style.display = 'none';
   
   const isHost = gameState.hostSocketId === mySocketId;
+  const viewKey = `${gameState.roomState}-${isHost}`;
   
   if (isHost && !wasHost) {
     resetHostForm();
   }
   wasHost = isHost;
   
-  if (gameState.roomState === 'waiting_for_players') {
-    document.getElementById('hostSetup').style.display = 'none';
-    document.getElementById('waitingArea').style.display = 'block';
-    document.getElementById('gameArea').style.display = 'none';
-    document.getElementById('waitingMessage').style.display = 'block';
-    document.getElementById('hostWaitingText').style.display = 'none';
-    renderWaitingChat();
-  } else if (gameState.roomState === 'waiting_for_host_input') {
-    if (isHost) {
-      document.getElementById('hostSetup').style.display = 'block';
-      document.getElementById('waitingArea').style.display = 'none';
-      document.getElementById('gameArea').style.display = 'none';
-      renderHostChat();
-    } else {
+  if (lastRendered.view !== viewKey) {
+    lastRendered.view = viewKey;
+    if (gameState.roomState === 'waiting_for_players') {
       document.getElementById('hostSetup').style.display = 'none';
       document.getElementById('waitingArea').style.display = 'block';
       document.getElementById('gameArea').style.display = 'none';
+      document.getElementById('waitingMessage').style.display = 'block';
+      document.getElementById('hostWaitingText').style.display = 'none';
+    } else if (gameState.roomState === 'waiting_for_host_input') {
+      if (isHost) {
+        document.getElementById('hostSetup').style.display = 'block';
+        document.getElementById('waitingArea').style.display = 'none';
+        document.getElementById('gameArea').style.display = 'none';
+      } else {
+        document.getElementById('hostSetup').style.display = 'none';
+        document.getElementById('waitingArea').style.display = 'block';
+        document.getElementById('gameArea').style.display = 'none';
+        document.getElementById('waitingMessage').style.display = 'none';
+        document.getElementById('hostWaitingText').style.display = 'block';
+      }
+    } else {
+      document.getElementById('hostSetup').style.display = 'none';
+      document.getElementById('waitingArea').style.display = 'none';
+      document.getElementById('gameArea').style.display = 'block';
       document.getElementById('waitingMessage').style.display = 'none';
-      document.getElementById('hostWaitingText').style.display = 'block';
-      const hostName = gameState.players[gameState.hostIndex].username;
+    }
+  }
+
+  if (gameState.roomState === 'waiting_for_players') {
+    renderWaitingChat();
+  } else if (gameState.roomState === 'waiting_for_host_input') {
+    if (isHost) {
+      renderHostChat();
+    } else {
+      const hostName = gameState.players[gameState.hostIndex]?.username || 'Host';
       document.getElementById('currentHostName').textContent = hostName;
       renderWaitingChat();
     }
   } else {
-    document.getElementById('hostSetup').style.display = 'none';
-    document.getElementById('waitingArea').style.display = 'none';
-    document.getElementById('gameArea').style.display = 'block';
-    document.getElementById('waitingMessage').style.display = 'none';
     renderGame();
   }
 });
@@ -203,6 +205,10 @@ function renderHostRoundLog() {
   const isRoundActive = gameState.roomState === 'round_active';
   
   if (isHost && isRoundActive && gameState.roundGuesses) {
+    const logKey = `${gameState.remainingGuessers}-${JSON.stringify(gameState.roundGuesses)}`;
+    if (lastRendered.hostRoundLog === logKey) return;
+    lastRendered.hostRoundLog = logKey;
+
     logPanel.style.display = 'block';
     
     const remainingDiv = document.getElementById('hostRemainingGuessers');
@@ -228,12 +234,20 @@ function renderHostRoundLog() {
 function renderHostView() {
   const hostPanel = document.getElementById('hostSecretWord');
   if (!hostPanel) return;
+  const hostWordDisplay = document.getElementById('hostWordDisplay');
   
   const isHost = gameState.hostSocketId === mySocketId;
   const isRoundActive = gameState.roomState === 'round_active';
+  const panelKey = `${isHost}-${isRoundActive}-${gameState.hostSecretWord || ''}`;
+  if (lastRendered.hostView === panelKey) {
+    renderHostRoundLog();
+    return;
+  }
+  lastRendered.hostView = panelKey;
   
   if (isHost && isRoundActive) {
     hostPanel.style.display = 'block';
+    if (hostWordDisplay) hostWordDisplay.textContent = gameState.hostSecretWord || '';
   } else {
     hostPanel.style.display = 'none';
   }
@@ -244,27 +258,20 @@ function renderHostView() {
 function renderHostSecretDisplay() {
   const hostContainer = document.getElementById('hostSecretContainer');
   if (!hostContainer) return;
+  const display = document.getElementById('hostSecretWordDisplay');
+  if (!display) return;
   
   const isHost = gameState.hostSocketId === mySocketId;
   const isRoundActive = gameState.roomState === 'round_active';
   const shouldShow = isHost && isRoundActive && gameState.hostSecretWord;
   
-  const cacheKey = `${gameState.hostSecretWord}-${(gameState.hostRevealed || gameState.revealed).join('')}`;
+  const cacheKey = `${shouldShow}-${gameState.hostSecretWord || ''}`;
   if (lastRendered.hostSecret === cacheKey) return;
   lastRendered.hostSecret = cacheKey;
   
   if (shouldShow) {
     hostContainer.style.display = 'block';
-    
-    const secretWordFormatted = gameState.hostSecretWord.split('').join(' ');
-    const revealedFormatted = (gameState.hostRevealed || gameState.revealed).join(' ');
-    
-    hostContainer.innerHTML = `
-      <p style="color: #666; font-size: 0.9em; margin-bottom: 5px;">Secret Word:</p>
-      <p style="font-size: 1.2em; font-weight: bold; color: #333; margin-bottom: 10px;">${secretWordFormatted}</p>
-      <p style="color: #666; font-size: 0.9em; margin-bottom: 5px;">Revealed:</p>
-      <p style="font-size: 1.2em; font-weight: bold; color: #667eea;">${revealedFormatted}</p>
-    `;
+    display.textContent = gameState.hostSecretWord;
   } else {
     hostContainer.style.display = 'none';
   }
@@ -338,6 +345,10 @@ function renderRevealedWord() {
 
 function renderClues() {
   const section = document.getElementById('cluesSection');
+  const clueKey = gameState.clues.join('|');
+  if (lastRendered.clues === clueKey) return;
+  lastRendered.clues = clueKey;
+
   if (gameState.clues.length === 0) {
     section.innerHTML = '';
     return;
@@ -349,39 +360,48 @@ function renderClues() {
 
 function renderKeypad() {
   const keypad = document.getElementById('keypad');
-  keypad.innerHTML = '';
+  if (!keypad) return;
   
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  if (!keypadInitialized) {
+    keypad.innerHTML = '';
+    for (const letter of alphabet) {
+      const button = document.createElement('button');
+      button.className = 'key';
+      button.textContent = letter;
+      button.dataset.letter = letter;
+      button.addEventListener('click', () => {
+        socket.emit('guess-letter', { roomId, letter });
+      });
+      keypad.appendChild(button);
+    }
+    keypadInitialized = true;
+  }
+
   const isHost = gameState.hostSocketId === mySocketId;
   const isMyTurn = gameState.turnSocketId === mySocketId;
-  
-  for (const letter of alphabet) {
-    const button = document.createElement('button');
-    button.className = 'key';
-    button.textContent = letter;
-    
+
+  const keypadKey = `${isHost}-${isMyTurn}-${gameState.gameOver}-${gameState.roomState}-${gameState.correctLetters.join('')}-${gameState.wrongLetters.join('')}`;
+  if (lastRendered.keypad === keypadKey) return;
+  lastRendered.keypad = keypadKey;
+
+  const buttons = keypad.querySelectorAll('.key');
+  buttons.forEach((button) => {
+    const letter = button.dataset.letter;
     const used = gameState.correctLetters.includes(letter) || 
                   gameState.wrongLetters.includes(letter);
-    
-    if (used || gameState.gameOver || isHost || !isMyTurn || gameState.roomState !== 'round_active') {
-      button.disabled = true;
-      if (used) button.classList.add('used');
-    }
-    
-    button.addEventListener('click', () => {
-      socket.emit('guess-letter', { roomId, letter });
-    });
-    
-    keypad.appendChild(button);
-  }
+    button.disabled = used || gameState.gameOver || isHost || !isMyTurn || gameState.roomState !== 'round_active';
+    button.classList.toggle('used', used);
+  });
 }
 
 function renderHistory() {
-  document.getElementById('wrongLetters').textContent = 
-    gameState.wrongLetters.join(', ') || 'None';
-  
-  document.getElementById('wrongWords').textContent = 
-    gameState.wrongWords.join(', ') || 'None';
+  const historyKey = `${gameState.wrongLetters.join(',')}-${gameState.wrongWords.join(',')}`;
+  if (lastRendered.history === historyKey) return;
+  lastRendered.history = historyKey;
+
+  document.getElementById('wrongLetters').textContent = gameState.wrongLetters.join(', ') || 'None';
+  document.getElementById('wrongWords').textContent = gameState.wrongWords.join(', ') || 'None';
 }
 
 function renderGameOver() {
@@ -451,7 +471,7 @@ function renderScoreboard() {
     const isMeTheMasterHost = gameState.masterHostIndex === gameState.players.findIndex(p => p.socketId === mySocketId);
     const kickBtn = isMeTheMasterHost && player.socketId !== mySocketId ? 
       ` <button class="kick-btn" onclick="kickPlayer('${player.socketId}')">Kick</button>` : '';
-    html += `<div class="player-row">${prefix}${player.username}${suffix}: ${gameState.scores[player.socketId] || 0}${kickBtn}</div>`;
+    html += `<div class="player-row" data-player-id="${player.socketId}">${prefix}${player.username}${suffix}: ${gameState.scores[player.socketId] || 0}${kickBtn}</div>`;
   });
   
   scoreboard.innerHTML = html;
@@ -460,6 +480,9 @@ function renderScoreboard() {
 function renderChat() {
   const container = document.getElementById('chatMessages');
   if (!container) return;
+  const chatKey = JSON.stringify(chatMessages);
+  if (lastRendered.chat === chatKey) return;
+  lastRendered.chat = chatKey;
   
   container.innerHTML = chatMessages.map(msg => 
     `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
@@ -470,6 +493,9 @@ function renderChat() {
 function renderHostChat() {
   const container = document.getElementById('hostChatMessages');
   if (!container) return;
+  const chatKey = JSON.stringify(chatMessages);
+  if (lastRendered.hostChat === chatKey) return;
+  lastRendered.hostChat = chatKey;
   
   container.innerHTML = chatMessages.map(msg => 
     `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
@@ -480,6 +506,9 @@ function renderHostChat() {
 function renderWaitingChat() {
   const container = document.getElementById('waitingChatMessages');
   if (!container) return;
+  const chatKey = JSON.stringify(chatMessages);
+  if (lastRendered.waitingChat === chatKey) return;
+  lastRendered.waitingChat = chatKey;
   
   container.innerHTML = chatMessages.map(msg => 
     `<div class="chat-msg"><strong>${escapeHtml(msg.sender)}:</strong> ${escapeHtml(msg.message)}</div>`
@@ -529,12 +558,14 @@ function kickPlayer(targetSocketId) {
 }
 
 document.getElementById('submitNameBtn').addEventListener('click', () => {
+  if (hasJoinedRoom) return;
   const name = document.getElementById('nameInput').value.trim();
   if (!name) {
     alert('Please enter your name');
     return;
   }
-  socket.emit('set-name', { roomId, name });
+  hasJoinedRoom = true;
+  socket.emit('joinRoom', { roomId, username: name });
 });
 
 document.getElementById('nameInput').addEventListener('keypress', (e) => {
