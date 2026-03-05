@@ -9,9 +9,11 @@ let statsOpen = false;
 let gameStats = {};
 let hasJoinedRoom = false;
 let keypadInitialized = false;
-let lastRevealedText = '';
-let lastTurnText = '';
-let lastTimerText = '';
+let lastState = {
+  revealed: '',
+  currentTurn: '',
+  timeLeft: null
+};
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -199,8 +201,8 @@ function setTurnIndicatorState(message, stateClass) {
   const indicator = document.getElementById('turnIndicator');
   if (!indicator) return;
   const next = `${stateClass}|${message}`;
-  if (lastTurnText === next) return;
-  lastTurnText = next;
+  if (lastState.currentTurn === next) return;
+  lastState.currentTurn = next;
 
   indicator.className = `turn-indicator turn-msg ${stateClass}`;
   indicator.textContent = message;
@@ -294,8 +296,8 @@ function renderTimer() {
     ? `⏱️ Time: ${gameState.timerSeconds}s`
     : '';
 
-  if (nextText === lastTimerText) return;
-  lastTimerText = nextText;
+  if (nextText === lastState.timeLeft) return;
+  lastState.timeLeft = nextText;
   timerDiv.textContent = nextText;
 }
 
@@ -337,11 +339,29 @@ function renderHollywoodLives() {
 function renderRevealedWord() {
   const display = document.getElementById('wordDisplay');
   if (!display) return;
-  
-  const revealedText = gameState.revealed.join(' ');
-  if (revealedText === lastRevealedText) return;
-  lastRevealedText = revealedText;
-  display.textContent = revealedText;
+
+  const revealedText = (gameState.revealed || []).join('');
+  if (revealedText === lastState.revealed) return;
+  lastState.revealed = revealedText;
+
+  const revealedChars = gameState.revealed || [];
+
+  while (display.childElementCount < revealedChars.length) {
+    const span = document.createElement('span');
+    span.className = 'word-letter';
+    display.appendChild(span);
+  }
+
+  while (display.childElementCount > revealedChars.length) {
+    display.removeChild(display.lastElementChild);
+  }
+
+  for (let i = 0; i < revealedChars.length; i++) {
+    const span = display.children[i];
+    if (span.textContent !== revealedChars[i]) {
+      span.textContent = revealedChars[i];
+    }
+  }
 }
 
 function renderClues() {
