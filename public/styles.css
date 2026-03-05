@@ -160,6 +160,15 @@ h1 {
   max-width: 100%;
 }
 
+#revealedContainer {
+  margin-top: 6px;
+  line-height: 1.2;
+}
+
+#revealedContainer .word-display {
+  margin-top: 2px;
+}
+
 .word-letter {
   display: inline-block;
   min-width: 40px;

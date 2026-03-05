@@ -9,6 +9,9 @@ let statsOpen = false;
 let gameStats = {};
 let hasJoinedRoom = false;
 let keypadInitialized = false;
+let lastRevealedText = '';
+let lastTurnText = '';
+let lastTimerText = '';
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -177,24 +180,30 @@ socket.on('game-state', (state) => {
       renderWaitingChat();
     }
   } else {
-    renderGame();
+    renderHollywoodLives();
+    renderRevealedWord();
+    renderClues();
+    renderKeypad();
+    renderHistory();
+    renderGameOver();
+    renderScoreboard();
+    renderTurnInfo();
+    renderHostView();
+    renderHostSecretDisplay();
+    renderTimer();
+    renderChat();
   }
 });
 
-function renderGame() {
-  if (!gameState) return;
-  renderHollywoodLives();
-  renderRevealedWord();
-  renderClues();
-  renderKeypad();
-  renderHistory();
-  renderGameOver();
-  renderScoreboard();
-  renderTurnInfo();
-  renderHostView();
-  renderHostSecretDisplay();
-  renderTimer();
-  renderChat();
+function setTurnIndicatorState(message, stateClass) {
+  const indicator = document.getElementById('turnIndicator');
+  if (!indicator) return;
+  const next = `${stateClass}|${message}`;
+  if (lastTurnText === next) return;
+  lastTurnText = next;
+
+  indicator.className = `turn-indicator turn-msg ${stateClass}`;
+  indicator.textContent = message;
 }
 
 function renderHostRoundLog() {
@@ -281,31 +290,26 @@ function renderTimer() {
   const timerDiv = document.getElementById('turnTimer');
   if (!timerDiv) return;
   
-  if (gameState.roomState === 'round_active' && gameState.timerSeconds !== undefined) {
-    timerDiv.textContent = `⏱️ Time: ${gameState.timerSeconds}s`;
-  } else {
-    timerDiv.textContent = '';
-  }
+  const nextText = (gameState.roomState === 'round_active' && gameState.timerSeconds !== undefined)
+    ? `⏱️ Time: ${gameState.timerSeconds}s`
+    : '';
+
+  if (nextText === lastTimerText) return;
+  lastTimerText = nextText;
+  timerDiv.textContent = nextText;
 }
 
 function renderTurnInfo() {
-  const indicator = document.getElementById('turnIndicator');
-  if (!indicator) return;
-  
   const isHost = gameState.hostSocketId === mySocketId;
   const isMyTurn = gameState.turnSocketId === mySocketId;
   const currentTurnName = gameState.currentTurnPlayerName || 'Unknown';
-  const key = `${isHost}-${isMyTurn}-${currentTurnName}`;
-  
-  if (lastRendered.turnInfo === key) return;
-  lastRendered.turnInfo = key;
   
   if (isHost) {
-    indicator.innerHTML = `<div class="turn-msg host-msg">You are the host - Current Turn: ${escapeHtml(currentTurnName)}</div>`;
+    setTurnIndicatorState(`You are the host - Current Turn: ${currentTurnName}`, 'host-msg');
   } else if (isMyTurn) {
-    indicator.innerHTML = '<div class="turn-msg my-turn">🎯 YOUR TURN TO GUESS!</div>';
+    setTurnIndicatorState('🎯 YOUR TURN TO GUESS!', 'my-turn');
   } else {
-    indicator.innerHTML = `<div class="turn-msg waiting-turn">Waiting for ${escapeHtml(currentTurnName)}'s turn...</div>`;
+    setTurnIndicatorState(`Waiting for ${currentTurnName}'s turn...`, 'waiting-turn');
   }
 }
 
@@ -334,13 +338,10 @@ function renderRevealedWord() {
   const display = document.getElementById('wordDisplay');
   if (!display) return;
   
-  const revealedStr = gameState.revealed.join('');
-  if (lastRendered.revealed === revealedStr) return;
-  lastRendered.revealed = revealedStr;
-  
-  display.innerHTML = gameState.revealed.map(letter => 
-    `<span class="word-letter">${letter}</span>`
-  ).join('');
+  const revealedText = gameState.revealed.join(' ');
+  if (revealedText === lastRevealedText) return;
+  lastRevealedText = revealedText;
+  display.textContent = revealedText;
 }
 
 function renderClues() {
